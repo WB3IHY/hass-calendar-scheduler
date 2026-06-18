@@ -228,35 +228,55 @@
     .event-block.plain { background: var(--secondary-background-color); color: var(--primary-text-color); opacity: 0.7; }
     .event-block.overlap { background: var(--warning-color, #ff9800); border: 2px solid var(--error-color, #db4437); }
     .event-title { display: block; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
-    ha-dialog { --mdc-dialog-min-width: 420px; --mdc-dialog-max-width: 520px; }
-    .dialog-body { display: flex; flex-direction: column; gap: 12px; min-width: 320px; }
-    .field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--secondary-text-color); }
-    .field input, .field select { font-size: 14px; padding: 6px 8px; border: 1px solid var(--divider-color); border-radius: 4px; background: var(--card-background-color); color: var(--primary-text-color); }
-    .field-row { display: flex; gap: 12px; }
-    .field-row .field { flex: 1; }
-    .custom-days { display: flex; gap: 6px; flex-wrap: wrap; }
-    .day-chip { display: flex; align-items: center; gap: 4px; border: 1px solid var(--divider-color); border-radius: 12px; padding: 4px 8px; font-size: 12px; cursor: pointer; }
-    .search-results { max-height: 160px; overflow-y: auto; border: 1px solid var(--divider-color); border-radius: 4px; margin-top: 4px; }
-    .result-group-label { font-size: 11px; text-transform: uppercase; color: var(--secondary-text-color); padding: 4px 8px; background: var(--secondary-background-color); }
-    .result-item { padding: 6px 8px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
-    .result-item:hover { background: var(--secondary-background-color); }
-    .result-entity-id { color: var(--secondary-text-color); font-size: 11px; }
-    .no-results { padding: 8px; font-size: 13px; color: var(--secondary-text-color); }
-    .selected-entities { display: flex; flex-direction: column; gap: 8px; }
-    .entity-row { border: 1px solid var(--divider-color); border-radius: 6px; padding: 8px; }
-    .entity-row-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-    .entity-row-name { font-weight: 500; flex: 1; }
-    .entity-row-domain { font-size: 11px; color: var(--secondary-text-color); text-transform: uppercase; }
-    .remove-btn { background: none; border: none; color: var(--secondary-text-color); cursor: pointer; font-size: 14px; }
-    .entity-row-controls { display: flex; flex-direction: column; gap: 6px; }
-    .control { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
-    .checkbox-control { flex-direction: row; align-items: center; gap: 6px; }
-    .toggle-group { display: flex; gap: 4px; }
-    .toggle-btn { flex: 1; padding: 6px 10px; border: 1px solid var(--divider-color); border-radius: 4px; background: var(--card-background-color); color: var(--primary-text-color); cursor: pointer; font-size: 13px; }
-    .toggle-btn.active { background: var(--primary-color); color: var(--text-primary-color, #fff); border-color: var(--primary-color); }
-    .hint { font-size: 12px; color: var(--secondary-text-color); margin: 0; }
-    ha-button.danger { --mdc-theme-primary: var(--error-color, #db4437); }
   `;
+
+  const MODAL_CSS = `
+    .hcs-modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 2147483647; display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .hcs-modal { background: var(--card-background-color, #fff); color: var(--primary-text-color, #000); border-radius: 12px; padding: 20px; width: 100%; max-width: 520px; max-height: calc(100vh - 64px); overflow-y: auto; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3); box-sizing: border-box; font-family: var(--paper-font-body1_-_font-family, Roboto, sans-serif); }
+    .hcs-modal-header { font-size: 18px; font-weight: 500; margin-bottom: 16px; }
+    .hcs-modal-body { display: flex; flex-direction: column; gap: 12px; }
+    .hcs-modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+    .hcs-btn { padding: 8px 16px; border-radius: 4px; border: 1px solid var(--divider-color, #ccc); background: var(--card-background-color, #fff); color: var(--primary-text-color, #000); cursor: pointer; font-size: 14px; }
+    .hcs-btn:hover { background: var(--secondary-background-color, #eee); }
+    .hcs-btn-primary { background: var(--primary-color, #03a9f4); color: var(--text-primary-color, #fff); border-color: var(--primary-color, #03a9f4); }
+    .hcs-btn-primary:hover { opacity: 0.9; }
+    .hcs-btn-danger { background: var(--error-color, #db4437); color: #fff; border-color: var(--error-color, #db4437); }
+    .hcs-btn-danger:hover { opacity: 0.9; }
+    .hcs-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--secondary-text-color, #555); }
+    .hcs-field input, .hcs-field select { font-size: 14px; padding: 6px 8px; border: 1px solid var(--divider-color, #ccc); border-radius: 4px; background: var(--card-background-color, #fff); color: var(--primary-text-color, #000); }
+    .hcs-field-row { display: flex; gap: 12px; }
+    .hcs-field-row .hcs-field { flex: 1; }
+    .hcs-custom-days { display: flex; gap: 6px; flex-wrap: wrap; }
+    .hcs-day-chip { display: flex; align-items: center; gap: 4px; border: 1px solid var(--divider-color, #ccc); border-radius: 12px; padding: 4px 8px; font-size: 12px; cursor: pointer; }
+    .hcs-search-results { max-height: 160px; overflow-y: auto; border: 1px solid var(--divider-color, #ccc); border-radius: 4px; margin-top: 4px; }
+    .hcs-result-group-label { font-size: 11px; text-transform: uppercase; color: var(--secondary-text-color, #555); padding: 4px 8px; background: var(--secondary-background-color, #f2f2f2); }
+    .hcs-result-item { padding: 6px 8px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+    .hcs-result-item:hover { background: var(--secondary-background-color, #f2f2f2); }
+    .hcs-result-entity-id { color: var(--secondary-text-color, #555); font-size: 11px; }
+    .hcs-no-results { padding: 8px; font-size: 13px; color: var(--secondary-text-color, #555); }
+    .hcs-selected-entities { display: flex; flex-direction: column; gap: 8px; }
+    .hcs-entity-row { border: 1px solid var(--divider-color, #ccc); border-radius: 6px; padding: 8px; }
+    .hcs-entity-row-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .hcs-entity-row-name { font-weight: 500; flex: 1; }
+    .hcs-entity-row-domain { font-size: 11px; color: var(--secondary-text-color, #555); text-transform: uppercase; }
+    .hcs-remove-btn { background: none; border: none; color: var(--secondary-text-color, #555); cursor: pointer; font-size: 14px; }
+    .hcs-entity-row-controls { display: flex; flex-direction: column; gap: 6px; }
+    .hcs-control { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+    .hcs-checkbox-control { flex-direction: row; align-items: center; gap: 6px; }
+    .hcs-toggle-group { display: flex; gap: 4px; }
+    .hcs-toggle-btn { flex: 1; padding: 6px 10px; border: 1px solid var(--divider-color, #ccc); border-radius: 4px; background: var(--card-background-color, #fff); color: var(--primary-text-color, #000); cursor: pointer; font-size: 13px; }
+    .hcs-toggle-btn.active { background: var(--primary-color, #03a9f4); color: var(--text-primary-color, #fff); border-color: var(--primary-color, #03a9f4); }
+    .hcs-hint { font-size: 12px; color: var(--secondary-text-color, #555); margin: 0; }
+  `;
+
+  let modalStylesInjected = false;
+  function ensureModalStylesInjected() {
+    if (modalStylesInjected) return;
+    modalStylesInjected = true;
+    const style = document.createElement("style");
+    style.textContent = MODAL_CSS;
+    document.head.appendChild(style);
+  }
 
   class HassCalendarScheduler extends HTMLElement {
     constructor() {
@@ -311,6 +331,10 @@
         this._built = true;
         this._loadEvents();
       }
+    }
+
+    disconnectedCallback() {
+      this._closeDialog();
     }
 
     _buildSkeleton() {
@@ -629,86 +653,100 @@
     }
 
     _closeDialog() {
-      if (this._dialogEl) {
-        this._dialogEl.open = false;
+      if (this._dialogEscHandler) {
+        document.removeEventListener("keydown", this._dialogEscHandler);
+        this._dialogEscHandler = null;
       }
-    }
-
-    _buildDialogSkeleton() {
       if (this._dialogEl) {
         this._dialogEl.remove();
         this._dialogEl = null;
       }
+    }
+
+    _buildDialogSkeleton() {
+      this._closeDialog();
+      ensureModalStylesInjected();
       const data = this._dialogData;
       const isEdit = data.mode === "edit";
       const wrapper = document.createElement("div");
       wrapper.innerHTML = `
-        <ha-dialog open header-title="${isEdit ? "Edit Event" : "New Event"}">
-          <div class="dialog-body">
-            <label class="field">
-              <span>Event name</span>
-              <input type="text" id="f-name" placeholder="e.g. Evening lights">
-            </label>
-            <div class="field-row">
-              <label class="field">
-                <span>Start</span>
-                <input type="datetime-local" id="f-start">
+        <div class="hcs-modal-overlay">
+          <div class="hcs-modal">
+            <div class="hcs-modal-header">${isEdit ? "Edit Event" : "New Event"}</div>
+            <div class="hcs-modal-body">
+              <label class="hcs-field">
+                <span>Event name</span>
+                <input type="text" id="f-name" placeholder="e.g. Evening lights">
               </label>
-              <label class="field">
-                <span>End</span>
-                <input type="datetime-local" id="f-end">
-              </label>
-            </div>
-            ${isEdit
-              ? (data.recurrenceId ? `<p class="hint">Part of a recurring series — this edit applies to this occurrence only.</p>` : "")
-              : `
-            <label class="field">
-              <span>Repeats</span>
-              <select id="f-recurrence">
-                <option value="none">Does not repeat</option>
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="weekdays">Weekdays (Mon–Fri)</option>
-                <option value="weekends">Weekends (Sat–Sun)</option>
-                <option value="custom">Custom…</option>
-              </select>
-            </label>
-            <div class="custom-days" id="f-custom-days" hidden>
-              ${DAY_LABELS.map((label, i) => `
-                <label class="day-chip">
-                  <input type="checkbox" value="${DAY_CODES[i]}">
-                  <span>${label}</span>
+              <div class="hcs-field-row">
+                <label class="hcs-field">
+                  <span>Start</span>
+                  <input type="datetime-local" id="f-start">
                 </label>
-              `).join("")}
+                <label class="hcs-field">
+                  <span>End</span>
+                  <input type="datetime-local" id="f-end">
+                </label>
+              </div>
+              ${isEdit
+                ? (data.recurrenceId ? `<p class="hcs-hint">Part of a recurring series — this edit applies to this occurrence only.</p>` : "")
+                : `
+              <label class="hcs-field">
+                <span>Repeats</span>
+                <select id="f-recurrence">
+                  <option value="none">Does not repeat</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="weekdays">Weekdays (Mon–Fri)</option>
+                  <option value="weekends">Weekends (Sat–Sun)</option>
+                  <option value="custom">Custom…</option>
+                </select>
+              </label>
+              <div class="hcs-custom-days" id="f-custom-days" hidden>
+                ${DAY_LABELS.map((label, i) => `
+                  <label class="hcs-day-chip">
+                    <input type="checkbox" value="${DAY_CODES[i]}">
+                    <span>${label}</span>
+                  </label>
+                `).join("")}
+              </div>
+              `}
+              <hr>
+              <div class="hcs-field">
+                <span>Add entity</span>
+                <input type="text" id="f-entity-search" placeholder="Search entities…" autocomplete="off">
+                <div class="hcs-search-results" id="f-search-results"></div>
+              </div>
+              <div class="hcs-selected-entities" id="f-selected-entities"></div>
             </div>
-            `}
-            <hr>
-            <div class="field">
-              <span>Add entity</span>
-              <input type="text" id="f-entity-search" placeholder="Search entities…" autocomplete="off">
-              <div class="search-results" id="f-search-results"></div>
+            <div class="hcs-modal-actions">
+              <button type="button" class="hcs-btn" id="f-cancel">Cancel</button>
+              ${isEdit ? `<button type="button" class="hcs-btn hcs-btn-danger" id="f-delete">Delete</button>` : ""}
+              <button type="button" class="hcs-btn hcs-btn-primary" id="f-save">Save</button>
             </div>
-            <div class="selected-entities" id="f-selected-entities"></div>
           </div>
-          <ha-dialog-footer slot="footer">
-            <ha-button slot="secondaryAction" id="f-cancel">Cancel</ha-button>
-            ${isEdit ? `<ha-button slot="secondaryAction" id="f-delete" class="danger">Delete</ha-button>` : ""}
-            <ha-button slot="primaryAction" id="f-save">Save</ha-button>
-          </ha-dialog-footer>
-        </ha-dialog>
+        </div>
       `;
-      const dialogEl = wrapper.firstElementChild;
-      this.shadowRoot.appendChild(dialogEl);
-      this._dialogEl = dialogEl;
+      const overlayEl = wrapper.firstElementChild;
+      document.body.appendChild(overlayEl);
+      this._dialogEl = overlayEl;
 
-      this._nameInput = dialogEl.querySelector("#f-name");
-      this._startInput = dialogEl.querySelector("#f-start");
-      this._endInput = dialogEl.querySelector("#f-end");
-      this._recurrenceSelect = dialogEl.querySelector("#f-recurrence");
-      this._customDaysEl = dialogEl.querySelector("#f-custom-days");
-      this._searchInput = dialogEl.querySelector("#f-entity-search");
-      this._searchResultsEl = dialogEl.querySelector("#f-search-results");
-      this._selectedEntitiesEl = dialogEl.querySelector("#f-selected-entities");
+      overlayEl.addEventListener("click", (e) => {
+        if (e.target === overlayEl) this._closeDialog();
+      });
+      this._dialogEscHandler = (e) => {
+        if (e.key === "Escape") this._closeDialog();
+      };
+      document.addEventListener("keydown", this._dialogEscHandler);
+
+      this._nameInput = overlayEl.querySelector("#f-name");
+      this._startInput = overlayEl.querySelector("#f-start");
+      this._endInput = overlayEl.querySelector("#f-end");
+      this._recurrenceSelect = overlayEl.querySelector("#f-recurrence");
+      this._customDaysEl = overlayEl.querySelector("#f-custom-days");
+      this._searchInput = overlayEl.querySelector("#f-entity-search");
+      this._searchResultsEl = overlayEl.querySelector("#f-search-results");
+      this._selectedEntitiesEl = overlayEl.querySelector("#f-selected-entities");
 
       this._nameInput.value = data.name;
       this._startInput.value = toLocalInputValue(data.start);
@@ -732,17 +770,10 @@
       }
 
       this._searchInput.addEventListener("input", () => this._handleEntitySearch());
-      dialogEl.querySelector("#f-cancel").addEventListener("click", () => this._closeDialog());
-      dialogEl.querySelector("#f-save").addEventListener("click", () => this._saveDialog());
-      const deleteBtn = dialogEl.querySelector("#f-delete");
+      overlayEl.querySelector("#f-cancel").addEventListener("click", () => this._closeDialog());
+      overlayEl.querySelector("#f-save").addEventListener("click", () => this._saveDialog());
+      const deleteBtn = overlayEl.querySelector("#f-delete");
       if (deleteBtn) deleteBtn.addEventListener("click", () => this._deleteDialogEvent());
-
-      dialogEl.addEventListener("closed", () => {
-        if (this._dialogEl === dialogEl) {
-          dialogEl.remove();
-          this._dialogEl = null;
-        }
-      });
 
       this._renderSelectedEntities();
       this._ensureEntityList();
@@ -770,19 +801,19 @@
       });
 
       const html = Array.from(byDomain.entries()).map(([domain, items]) => `
-        <div class="result-group">
-          <div class="result-group-label">${domain}</div>
+        <div class="hcs-result-group">
+          <div class="hcs-result-group-label">${domain}</div>
           ${items.map((e) => `
-            <div class="result-item" data-entity-id="${e.entityId}">
+            <div class="hcs-result-item" data-entity-id="${e.entityId}">
               <span>${escapeHtml(friendlyName(this._hass, e.entityId, e.name))}</span>
-              <span class="result-entity-id">${e.entityId}</span>
+              <span class="hcs-result-entity-id">${e.entityId}</span>
             </div>
           `).join("")}
         </div>
       `).join("");
 
-      this._searchResultsEl.innerHTML = html || `<div class="no-results">No matches</div>`;
-      this._searchResultsEl.querySelectorAll(".result-item").forEach((item) => {
+      this._searchResultsEl.innerHTML = html || `<div class="hcs-no-results">No matches</div>`;
+      this._searchResultsEl.querySelectorAll(".hcs-result-item").forEach((item) => {
         item.addEventListener("click", () => {
           this._addEntity(item.getAttribute("data-entity-id"));
           this._searchInput.value = "";
@@ -815,11 +846,11 @@
 
     _renderStateToggleHtml(row) {
       return `
-        <div class="control state-toggle">
+        <div class="hcs-control hcs-state-toggle">
           <span>State</span>
-          <div class="toggle-group">
-            <button type="button" class="toggle-btn ${row.state === "on" ? "active" : ""}" data-state="on">On</button>
-            <button type="button" class="toggle-btn ${row.state === "off" ? "active" : ""}" data-state="off">Off</button>
+          <div class="hcs-toggle-group">
+            <button type="button" class="hcs-toggle-btn ${row.state === "on" ? "active" : ""}" data-state="on">On</button>
+            <button type="button" class="hcs-toggle-btn ${row.state === "off" ? "active" : ""}" data-state="off">Off</button>
           </div>
         </div>
       `;
@@ -827,7 +858,7 @@
 
     _renderRevertCheckboxHtml(row) {
       return `
-        <label class="control checkbox-control">
+        <label class="hcs-control hcs-checkbox-control">
           <input type="checkbox" data-revert ${row.revert ? "checked" : ""}>
           <span>Revert when event ends</span>
         </label>
@@ -840,25 +871,25 @@
           return `
             ${this._renderStateToggleHtml(row)}
             ${row.state === "on" ? `
-            <label class="control">
-              <span>Brightness: <b class="val" data-val="brightness_pct">${row.params.brightness_pct}</b>%</span>
+            <label class="hcs-control">
+              <span>Brightness: <b class="hcs-val" data-val="brightness_pct">${row.params.brightness_pct}</b>%</span>
               <input type="range" min="1" max="100" value="${row.params.brightness_pct}" data-param="brightness_pct">
             </label>
             ${row.params.color_temp_kelvin != null ? `
-            <label class="control">
-              <span>Color temp: <b class="val" data-val="color_temp_kelvin">${row.params.color_temp_kelvin}</b>K</span>
+            <label class="hcs-control">
+              <span>Color temp: <b class="hcs-val" data-val="color_temp_kelvin">${row.params.color_temp_kelvin}</b>K</span>
               <input type="range" min="2000" max="6500" value="${row.params.color_temp_kelvin}" data-param="color_temp_kelvin">
             </label>` : ""}` : ""}
-            <p class="hint">${toggleHintText(row)}</p>
+            <p class="hcs-hint">${toggleHintText(row)}</p>
             ${this._renderRevertCheckboxHtml(row)}
           `;
         case "climate":
           return `
-            <label class="control">
-              <span>Target temp: <b class="val" data-val="temperature">${row.params.temperature}</b>°</span>
+            <label class="hcs-control">
+              <span>Target temp: <b class="hcs-val" data-val="temperature">${row.params.temperature}</b>°</span>
               <input type="range" min="10" max="32" step="0.5" value="${row.params.temperature}" data-param="temperature">
             </label>
-            <label class="control">
+            <label class="hcs-control">
               <span>Mode</span>
               <select data-param="hvac_mode">
                 ${this._hvacModesFor(row).map((m) =>
@@ -869,12 +900,12 @@
           `;
         case "media_player":
           return `
-            <label class="control checkbox-control">
+            <label class="hcs-control hcs-checkbox-control">
               <input type="checkbox" data-action="volume" ${row.actions.volume ? "checked" : ""}>
-              <span>Set volume: <b class="val" data-val="volume_level">${Math.round((row.params.volume_level || 0) * 100)}</b>%</span>
+              <span>Set volume: <b class="hcs-val" data-val="volume_level">${Math.round((row.params.volume_level || 0) * 100)}</b>%</span>
             </label>
             <input type="range" min="0" max="100" value="${Math.round((row.params.volume_level || 0) * 100)}" data-param="volume_level" ${row.actions.volume ? "" : "disabled"}>
-            <label class="control checkbox-control">
+            <label class="hcs-control hcs-checkbox-control">
               <input type="checkbox" data-action="source" ${row.actions.source ? "checked" : ""}>
               <span>Set source</span>
             </label>
@@ -886,18 +917,18 @@
           `;
         case "cover":
           return `
-            <label class="control">
-              <span>Position: <b class="val" data-val="position">${row.params.position}</b>%</span>
+            <label class="hcs-control">
+              <span>Position: <b class="hcs-val" data-val="position">${row.params.position}</b>%</span>
               <input type="range" min="0" max="100" value="${row.params.position}" data-param="position">
             </label>
             ${this._renderRevertCheckboxHtml(row)}
           `;
         case "trigger":
-          return `<p class="hint">Triggers the scene when the event starts.</p>`;
+          return `<p class="hcs-hint">Triggers the scene when the event starts.</p>`;
         default:
           return `
             ${this._renderStateToggleHtml(row)}
-            <p class="hint">${toggleHintText(row)}</p>
+            <p class="hcs-hint">${toggleHintText(row)}</p>
             ${this._renderRevertCheckboxHtml(row)}
           `;
       }
@@ -905,21 +936,21 @@
 
     _renderEntityRowHtml(row) {
       return `
-        <div class="entity-row" data-entity-id="${row.entityId}">
-          <div class="entity-row-header">
-            <span class="entity-row-name">${escapeHtml(row.name)}</span>
-            <span class="entity-row-domain">${row.domain}</span>
-            <button class="remove-btn" data-remove="${row.entityId}" title="Remove">&#10005;</button>
+        <div class="hcs-entity-row" data-entity-id="${row.entityId}">
+          <div class="hcs-entity-row-header">
+            <span class="hcs-entity-row-name">${escapeHtml(row.name)}</span>
+            <span class="hcs-entity-row-domain">${row.domain}</span>
+            <button class="hcs-remove-btn" data-remove="${row.entityId}" title="Remove">&#10005;</button>
           </div>
-          <div class="entity-row-controls">${this._renderRowControlsHtml(row)}</div>
+          <div class="hcs-entity-row-controls">${this._renderRowControlsHtml(row)}</div>
         </div>
       `;
     }
 
     _wireEntityRow(row) {
-      const rowEl = this._selectedEntitiesEl.querySelector(`.entity-row[data-entity-id="${row.entityId}"]`);
+      const rowEl = this._selectedEntitiesEl.querySelector(`.hcs-entity-row[data-entity-id="${row.entityId}"]`);
       if (!rowEl) return;
-      rowEl.querySelector(".remove-btn").addEventListener("click", () => this._removeEntity(row.entityId));
+      rowEl.querySelector(".hcs-remove-btn").addEventListener("click", () => this._removeEntity(row.entityId));
 
       rowEl.querySelectorAll("[data-param]").forEach((input) => {
         input.addEventListener("input", () => {
@@ -927,7 +958,7 @@
           if (input.type === "range") {
             const value = Number(input.value);
             row.params[key] = key === "volume_level" ? value / 100 : value;
-            const label = rowEl.querySelector(`.val[data-val="${key}"]`);
+            const label = rowEl.querySelector(`.hcs-val[data-val="${key}"]`);
             if (label) label.textContent = value;
           } else {
             row.params[key] = input.value;
@@ -946,7 +977,7 @@
         });
       });
 
-      rowEl.querySelectorAll(".toggle-btn[data-state]").forEach((btn) => {
+      rowEl.querySelectorAll(".hcs-toggle-btn[data-state]").forEach((btn) => {
         btn.addEventListener("click", () => {
           row.state = btn.getAttribute("data-state");
           this._renderSelectedEntities();
@@ -965,7 +996,7 @@
     _renderSelectedEntities() {
       const rows = this._dialogData.entities;
       if (!rows.length) {
-        this._selectedEntitiesEl.innerHTML = `<p class="hint">No entities added yet.</p>`;
+        this._selectedEntitiesEl.innerHTML = `<p class="hcs-hint">No entities added yet.</p>`;
         return;
       }
       this._selectedEntitiesEl.innerHTML = rows.map((row) => this._renderEntityRowHtml(row)).join("");
