@@ -38,24 +38,50 @@ you — but it's plain JSON if you ever want to script around it.
 
 ## Installation
 
-1. **Automation**: in Home Assistant, go to *Settings → Automations →
-   Create Automation → Edit in YAML*, and paste the contents of
-   `automation.yaml`. Save it. If your Local Calendar entity isn't
-   `calendar.calendar`, edit the `entity_id` in the automation's triggers.
-2. **Card file**: copy `hass-calendar-scheduler.js` into your HA config's
-   `www` folder, either manually or with `deploy.sh` (see below). It will
-   be served at `/local/hass-calendar-scheduler.js`.
-3. **Register the resource**: go to *Settings → Dashboards → ⋮ → Resources
-   → Add Resource*, set URL to `/local/hass-calendar-scheduler.js`, type
-   *JavaScript Module*.
-4. **Add the card**: edit a dashboard, add a card, choose *Manual*, and use:
-   ```yaml
-   type: custom:hass-calendar-scheduler
-   entity: calendar.calendar
-   ```
-   (`entity` is optional and defaults to `calendar.calendar`.)
+The automation always has to be added by hand — HACS only manages frontend
+resources, not automations — but the card itself can be installed either
+through HACS or manually.
 
-## Deploying the card file
+### 1. Add the automation (required either way)
+
+In Home Assistant, go to *Settings → Automations → Create Automation →
+Edit in YAML*, and paste the contents of `automation.yaml`. Save it. If
+your Local Calendar entity isn't `calendar.calendar`, edit the `entity_id`
+in the automation's triggers.
+
+### 2. Install the card
+
+**Option A: HACS (recommended)**
+
+1. In HA, go to *HACS → ⋮ (top right) → Custom repositories*, and add:
+   `https://github.com/WB3IHY/hass-calendar-scheduler`, category
+   *Dashboard*.
+2. Back in HACS's Frontend section, search for *Calendar Scheduler* and
+   click *Download*.
+3. HACS usually registers the Lovelace resource for you automatically. If
+   the card doesn't show up when adding it to a dashboard, add the
+   resource manually as described in step 3 of Option B below.
+4. Reload your browser (or clear cache) so the new resource loads.
+
+**Option B: manual deploy**
+
+1. Copy `hass-calendar-scheduler.js` into your HA config's `www` folder,
+   either manually or with `deploy.sh` (see below). It will be served at
+   `/local/hass-calendar-scheduler.js`.
+2. Register the resource: go to *Settings → Dashboards → ⋮ → Resources →
+   Add Resource*, set URL to `/local/hass-calendar-scheduler.js`, type
+   *JavaScript Module*.
+
+### 3. Add the card to a dashboard
+
+Edit a dashboard, add a card, choose *Manual*, and use:
+```yaml
+type: custom:hass-calendar-scheduler
+entity: calendar.calendar
+```
+(`entity` is optional and defaults to `calendar.calendar`.)
+
+## Deploying the card file manually
 
 `deploy.sh` copies `hass-calendar-scheduler.js` to a Home Assistant
 Operating System (HAOS) install over SCP, since HAOS runs SSH on port
