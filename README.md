@@ -9,10 +9,12 @@ set a recurrence, and save — no YAML required for day-to-day scheduling.
 
 - **Backend**: one automation (`automation.yaml`) watches a Local Calendar
   entity (`calendar.calendar` by default). On event start it parses the
-  event description as JSON and fires the listed service calls. On event end
-  it calls each entity's domain-appropriate "off" service (e.g.
-  `light.turn_off`, `cover.close_cover`), skipping domains with no off-state
-  (like `scene`).
+  event description as JSON and fires the listed service calls. On event
+  end it calls each entity's reverse action — the opposite `turn_on`/
+  `turn_off` for simple toggle domains, or a fixed off-equivalent for
+  `cover`/`climate`/`media_player` (e.g. `cover.close_cover`) — unless that
+  entity is marked as a one-shot trigger (`"revert": false`) or its domain
+  has no off-state at all (like `scene`).
 - **Frontend**: a single-file vanilla JS Lovelace card
   (`hass-calendar-scheduler.js`, no build step) that renders a day/week
   timeline, lets you search and add entities from a dialog with
@@ -27,11 +29,21 @@ JSON:
 ```json
 {
   "entities": [
-    { "entity_id": "light.kitchen", "service": "light.turn_on", "params": { "brightness_pct": 80 } },
-    { "entity_id": "climate.living_room", "service": "climate.set_temperature", "params": { "temperature": 21, "hvac_mode": "heat" } }
+    { "entity_id": "light.kitchen", "service": "light.turn_on", "params": { "brightness_pct": 80 }, "revert": true },
+    { "entity_id": "switch.fan", "service": "switch.turn_off", "params": {}, "revert": false },
+    { "entity_id": "climate.living_room", "service": "climate.set_temperature", "params": { "temperature": 21, "hvac_mode": "heat" }, "revert": true }
   ]
 }
 ```
+
+`revert` is optional and defaults to `true` when omitted (for backward
+compatibility with events created before this field existed). When `true`,
+the automation fires the opposite action at event end (or the fixed
+off-equivalent for `cover`/`climate`/`media_player`). When `false`, it's a
+one-shot trigger: the entity is set once at event start and stays that way
+indefinitely, with no action at event end — e.g. `switch.fan` above turns
+off when the event starts and is left off, regardless of when the event
+ends.
 
 You generally won't need to write this by hand — the dialog builds it for
 you — but it's plain JSON if you ever want to script around it.
@@ -112,13 +124,18 @@ for the `root` user.
 - In the dialog, give the event a name, set start/end times, optionally set
   a recurrence (daily, weekly, weekdays, weekends, or custom days), and
   search for entities to add. Each entity gets domain-aware controls:
-  - **light**: brightness, color temperature
-  - **switch / input_boolean**: on/off (implicit)
-  - **scene**: triggered on event start only (no off-state)
+  - **light**: On/Off toggle (brightness and color temperature sliders
+    appear when On is selected)
+  - **switch / input_boolean / everything else**: On/Off toggle
+  - **scene**: triggered on event start only (no off-state, no on/off
+    toggle)
   - **climate**: target temperature, HVAC mode
   - **media_player**: volume and/or source (toggle which one(s) apply)
   - **cover**: position
-  - everything else: generic on/off
+  - every domain except scene also gets a **"Revert when event ends"**
+    checkbox (checked by default). Uncheck it to make that entity a
+    one-shot trigger — e.g. "turn this light off and leave it off" rather
+    than "turn it off for the duration of the event."
 - Events whose entities overlap with another event's entities in the same
   time range are highlighted in a warning color.
 

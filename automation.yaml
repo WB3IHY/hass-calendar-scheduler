@@ -1,10 +1,13 @@
 alias: Calendar Scheduler - Master Automation
 description: >-
   Reads calendar.calendar event descriptions as JSON
-  ({"entities":[{"entity_id":"...","service":"...","params":{...}}]}) and
-  fires each listed service call on event start. On event end, calls each
-  entity's domain-appropriate "off" service, skipping domains with no
-  off-state (e.g. scene).
+  ({"entities":[{"entity_id":"...","service":"...","params":{...},"revert":true}]})
+  and fires each listed service call on event start. On event end, calls
+  each entity's reverse action (the opposite turn_on/turn_off for simple
+  toggle domains, or a fixed domain-appropriate "off" service for cover/
+  climate/media_player), unless that entity's "revert" field is false (a
+  one-shot trigger with no reverse action) or its domain has no off-state
+  (e.g. scene). "revert" defaults to true when omitted.
 mode: parallel
 trigger:
   - trigger: calendar
@@ -32,6 +35,7 @@ action:
       sequence:
         - variables:
             domain: "{{ repeat.item.entity_id.split('.')[0] }}"
+            should_revert: "{{ repeat.item.revert if repeat.item.revert is defined else true }}"
         - choose:
             - conditions:
                 - condition: trigger
@@ -45,9 +49,13 @@ action:
                 - condition: trigger
                   id: end
                 - condition: template
-                  value_template: "{{ domain not in no_off_domains }}"
+                  value_template: >-
+                    {{ should_revert and domain not in no_off_domains }}
               sequence:
                 - action: >-
-                    {{ off_overrides.get(domain, domain ~ '.turn_off') }}
+                    {{ off_overrides[domain] if domain in off_overrides
+                       else (domain ~ '.turn_off') if repeat.item.service.endswith('.turn_on')
+                       else (domain ~ '.turn_on') if repeat.item.service.endswith('.turn_off')
+                       else (domain ~ '.turn_off') }}
                   target:
                     entity_id: "{{ repeat.item.entity_id }}"

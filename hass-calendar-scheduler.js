@@ -104,6 +104,15 @@
     return entityId;
   }
 
+  function toggleHintText(row) {
+    const verb = row.state === "off" ? "off" : "on";
+    const oppositeVerb = verb === "on" ? "off" : "on";
+    if (row.revert) {
+      return `Turns ${verb} at event start, ${oppositeVerb} at event end.`;
+    }
+    return `Turns ${verb} at event start and stays ${verb} until something else changes it.`;
+  }
+
   function parseSchedulerPayload(description) {
     if (!description) return null;
     try {
@@ -242,8 +251,11 @@
     .entity-row-controls { display: flex; flex-direction: column; gap: 6px; }
     .control { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
     .checkbox-control { flex-direction: row; align-items: center; gap: 6px; }
+    .toggle-group { display: flex; gap: 4px; }
+    .toggle-btn { flex: 1; padding: 6px 10px; border: 1px solid var(--divider-color); border-radius: 4px; background: var(--card-background-color); color: var(--primary-text-color); cursor: pointer; font-size: 13px; }
+    .toggle-btn.active { background: var(--primary-color); color: var(--text-primary-color, #fff); border-color: var(--primary-color); }
     .hint { font-size: 12px; color: var(--secondary-text-color); margin: 0; }
-    mwc-button.danger { --mdc-theme-primary: var(--error-color, #db4437); }
+    ha-button.danger { --mdc-theme-primary: var(--error-color, #db4437); }
   `;
 
   class HassCalendarScheduler extends HTMLElement {
@@ -541,10 +553,13 @@
             name: friendlyName(this._hass, item.entity_id, this._entityRegistryName(item.entity_id)),
             params: {},
             actions: { volume: false, source: false },
+            state: "on",
+            revert: true,
           };
           byEntity.set(item.entity_id, row);
           rows.push(row);
         }
+        if (item.revert !== undefined) row.revert = !!item.revert;
         if (kind === "media_player") {
           if (item.service === "media_player.volume_set") {
             row.actions.volume = true;
@@ -553,6 +568,9 @@
             row.actions.source = true;
             row.params.source = item.params.source;
           }
+        } else if (kind === "light" || kind === "toggle") {
+          row.state = item.service && item.service.endsWith(".turn_off") ? "off" : "on";
+          Object.assign(row.params, item.params || {});
         } else {
           Object.assign(row.params, item.params || {});
         }
@@ -563,8 +581,8 @@
     _defaultRowForEntity(entityId) {
       const domain = domainOf(entityId);
       const kind = kindForDomain(domain);
-      const state = this._hass.states[entityId];
-      const attrs = (state && state.attributes) || {};
+      const entityState = this._hass.states[entityId];
+      const attrs = (entityState && entityState.attributes) || {};
       const row = {
         entityId,
         domain,
@@ -572,6 +590,8 @@
         name: friendlyName(this._hass, entityId, this._entityRegistryName(entityId)),
         params: {},
         actions: { volume: true, source: false },
+        state: "on",
+        revert: true,
       };
       if (kind === "light") {
         row.params.brightness_pct = 100;
@@ -623,7 +643,7 @@
       const isEdit = data.mode === "edit";
       const wrapper = document.createElement("div");
       wrapper.innerHTML = `
-        <ha-dialog open heading="${isEdit ? "Edit Event" : "New Event"}">
+        <ha-dialog open header-title="${isEdit ? "Edit Event" : "New Event"}">
           <div class="dialog-body">
             <label class="field">
               <span>Event name</span>
@@ -670,9 +690,11 @@
             </div>
             <div class="selected-entities" id="f-selected-entities"></div>
           </div>
-          <mwc-button slot="secondaryAction" id="f-cancel">Cancel</mwc-button>
-          ${isEdit ? `<mwc-button slot="secondaryAction" id="f-delete" class="danger">Delete</mwc-button>` : ""}
-          <mwc-button slot="primaryAction" id="f-save">Save</mwc-button>
+          <ha-dialog-footer slot="footer">
+            <ha-button slot="secondaryAction" id="f-cancel">Cancel</ha-button>
+            ${isEdit ? `<ha-button slot="secondaryAction" id="f-delete" class="danger">Delete</ha-button>` : ""}
+            <ha-button slot="primaryAction" id="f-save">Save</ha-button>
+          </ha-dialog-footer>
         </ha-dialog>
       `;
       const dialogEl = wrapper.firstElementChild;
@@ -791,10 +813,33 @@
       return (state && state.attributes && state.attributes.source_list) || [];
     }
 
+    _renderStateToggleHtml(row) {
+      return `
+        <div class="control state-toggle">
+          <span>State</span>
+          <div class="toggle-group">
+            <button type="button" class="toggle-btn ${row.state === "on" ? "active" : ""}" data-state="on">On</button>
+            <button type="button" class="toggle-btn ${row.state === "off" ? "active" : ""}" data-state="off">Off</button>
+          </div>
+        </div>
+      `;
+    }
+
+    _renderRevertCheckboxHtml(row) {
+      return `
+        <label class="control checkbox-control">
+          <input type="checkbox" data-revert ${row.revert ? "checked" : ""}>
+          <span>Revert when event ends</span>
+        </label>
+      `;
+    }
+
     _renderRowControlsHtml(row) {
       switch (row.kind) {
         case "light":
           return `
+            ${this._renderStateToggleHtml(row)}
+            ${row.state === "on" ? `
             <label class="control">
               <span>Brightness: <b class="val" data-val="brightness_pct">${row.params.brightness_pct}</b>%</span>
               <input type="range" min="1" max="100" value="${row.params.brightness_pct}" data-param="brightness_pct">
@@ -803,7 +848,9 @@
             <label class="control">
               <span>Color temp: <b class="val" data-val="color_temp_kelvin">${row.params.color_temp_kelvin}</b>K</span>
               <input type="range" min="2000" max="6500" value="${row.params.color_temp_kelvin}" data-param="color_temp_kelvin">
-            </label>` : ""}
+            </label>` : ""}` : ""}
+            <p class="hint">${toggleHintText(row)}</p>
+            ${this._renderRevertCheckboxHtml(row)}
           `;
         case "climate":
           return `
@@ -818,6 +865,7 @@
                   `<option value="${m}" ${m === row.params.hvac_mode ? "selected" : ""}>${m}</option>`).join("")}
               </select>
             </label>
+            ${this._renderRevertCheckboxHtml(row)}
           `;
         case "media_player":
           return `
@@ -834,6 +882,7 @@
               ${this._sourceListFor(row).map((s) =>
                 `<option value="${escapeHtml(s)}" ${s === row.params.source ? "selected" : ""}>${escapeHtml(s)}</option>`).join("")}
             </select>
+            ${this._renderRevertCheckboxHtml(row)}
           `;
         case "cover":
           return `
@@ -841,11 +890,16 @@
               <span>Position: <b class="val" data-val="position">${row.params.position}</b>%</span>
               <input type="range" min="0" max="100" value="${row.params.position}" data-param="position">
             </label>
+            ${this._renderRevertCheckboxHtml(row)}
           `;
         case "trigger":
           return `<p class="hint">Triggers the scene when the event starts.</p>`;
         default:
-          return `<p class="hint">Turns on at event start, off at event end.</p>`;
+          return `
+            ${this._renderStateToggleHtml(row)}
+            <p class="hint">${toggleHintText(row)}</p>
+            ${this._renderRevertCheckboxHtml(row)}
+          `;
       }
     }
 
@@ -891,6 +945,21 @@
           if (input) input.disabled = !checkbox.checked;
         });
       });
+
+      rowEl.querySelectorAll(".toggle-btn[data-state]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          row.state = btn.getAttribute("data-state");
+          this._renderSelectedEntities();
+        });
+      });
+
+      const revertCheckbox = rowEl.querySelector("[data-revert]");
+      if (revertCheckbox) {
+        revertCheckbox.addEventListener("change", () => {
+          row.revert = revertCheckbox.checked;
+          this._renderSelectedEntities();
+        });
+      }
     }
 
     _renderSelectedEntities() {
@@ -908,23 +977,28 @@
       this._dialogData.entities.forEach((row) => {
         if (row.kind === "media_player") {
           if (row.actions.volume) {
-            entitiesPayload.push({ entity_id: row.entityId, service: "media_player.volume_set", params: { volume_level: row.params.volume_level } });
+            entitiesPayload.push({ entity_id: row.entityId, service: "media_player.volume_set", params: { volume_level: row.params.volume_level }, revert: row.revert });
           }
           if (row.actions.source) {
-            entitiesPayload.push({ entity_id: row.entityId, service: "media_player.select_source", params: { source: row.params.source } });
+            entitiesPayload.push({ entity_id: row.entityId, service: "media_player.select_source", params: { source: row.params.source }, revert: row.revert });
           }
         } else if (row.kind === "light") {
-          const params = { brightness_pct: row.params.brightness_pct };
-          if (row.params.color_temp_kelvin != null) params.color_temp_kelvin = row.params.color_temp_kelvin;
-          entitiesPayload.push({ entity_id: row.entityId, service: "light.turn_on", params });
+          if (row.state === "off") {
+            entitiesPayload.push({ entity_id: row.entityId, service: "light.turn_off", params: {}, revert: row.revert });
+          } else {
+            const params = { brightness_pct: row.params.brightness_pct };
+            if (row.params.color_temp_kelvin != null) params.color_temp_kelvin = row.params.color_temp_kelvin;
+            entitiesPayload.push({ entity_id: row.entityId, service: "light.turn_on", params, revert: row.revert });
+          }
         } else if (row.kind === "climate") {
-          entitiesPayload.push({ entity_id: row.entityId, service: "climate.set_temperature", params: { temperature: row.params.temperature, hvac_mode: row.params.hvac_mode } });
+          entitiesPayload.push({ entity_id: row.entityId, service: "climate.set_temperature", params: { temperature: row.params.temperature, hvac_mode: row.params.hvac_mode }, revert: row.revert });
         } else if (row.kind === "cover") {
-          entitiesPayload.push({ entity_id: row.entityId, service: "cover.set_cover_position", params: { position: row.params.position } });
+          entitiesPayload.push({ entity_id: row.entityId, service: "cover.set_cover_position", params: { position: row.params.position }, revert: row.revert });
         } else if (row.kind === "trigger") {
           entitiesPayload.push({ entity_id: row.entityId, service: "scene.turn_on", params: {} });
         } else {
-          entitiesPayload.push({ entity_id: row.entityId, service: `${row.domain}.turn_on`, params: {} });
+          const service = row.state === "off" ? `${row.domain}.turn_off` : `${row.domain}.turn_on`;
+          entitiesPayload.push({ entity_id: row.entityId, service, params: {}, revert: row.revert });
         }
       });
       return entitiesPayload;
