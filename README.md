@@ -120,7 +120,9 @@ for the `root` user.
 - Switch between **Day** and **Week** views, navigate with the arrows or
   jump to **Today**.
 - Click an empty time slot to create a new event; click an existing event
-  block to edit it.
+  block to edit it. When editing an occurrence of a recurring event, the
+  Delete button offers a choice of scope: this event, this and all
+  following occurrences, or the entire series.
 - In the dialog, give the event a name, set start/end times, optionally set
   a recurrence (daily, weekly, weekdays, weekends, or custom days), and
   search for entities to add. Each entity gets domain-aware controls:
@@ -151,9 +153,10 @@ a minute of the scheduled time, not instantaneously.
 
 - All-day calendar events are not shown or creatable from the card — it's
   designed around timed scheduling, not all-day reminders.
-- Editing or deleting an occurrence of a recurring event affects **only
-  that occurrence**, not the whole series. To change a series, delete it
-  and recreate it.
+- Editing a recurring event always applies **only to that occurrence**
+  (saving never changes the series' recurrence rule). Deleting offers a
+  choice — this event, this and all following, or the entire series — so
+  to change a series' settings, delete the whole series and recreate it.
 - Requires a reasonably current Home Assistant (2024.10+) for the
   `trigger:`/`action:` automation syntax and `color_temp_kelvin` service
   field used here.

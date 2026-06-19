@@ -267,6 +267,7 @@
     .hcs-toggle-btn { flex: 1; padding: 6px 10px; border: 1px solid var(--divider-color, #ccc); border-radius: 4px; background: var(--card-background-color, #fff); color: var(--primary-text-color, #000); cursor: pointer; font-size: 13px; }
     .hcs-toggle-btn.active { background: var(--primary-color, #03a9f4); color: var(--text-primary-color, #fff); border-color: var(--primary-color, #03a9f4); }
     .hcs-hint { font-size: 12px; color: var(--secondary-text-color, #555); margin: 0; }
+    .hcs-delete-range { padding: 8px; border-radius: 4px; border: 1px solid var(--divider-color, #ccc); background: var(--card-background-color, #fff); color: var(--primary-text-color, #000); font-size: 13px; }
   `;
 
   let modalStylesInjected = false;
@@ -689,7 +690,7 @@
                 </label>
               </div>
               ${isEdit
-                ? (data.recurrenceId ? `<p class="hcs-hint">Part of a recurring series — this edit applies to this occurrence only.</p>` : "")
+                ? (data.recurrenceId ? `<p class="hcs-hint">Part of a recurring series — saving this edit applies to this occurrence only. Use the delete options below to remove more than one occurrence.</p>` : "")
                 : `
               <label class="hcs-field">
                 <span>Repeats</span>
@@ -721,7 +722,16 @@
             </div>
             <div class="hcs-modal-actions">
               <button type="button" class="hcs-btn" id="f-cancel">Cancel</button>
-              ${isEdit ? `<button type="button" class="hcs-btn hcs-btn-danger" id="f-delete">Delete</button>` : ""}
+              ${isEdit ? `
+                ${data.recurrenceId ? `
+                  <select id="f-delete-range" class="hcs-delete-range">
+                    <option value="">Delete this event</option>
+                    <option value="THISANDFUTURE">Delete this and following</option>
+                    <option value="ALL">Delete entire series</option>
+                  </select>
+                ` : ""}
+                <button type="button" class="hcs-btn hcs-btn-danger" id="f-delete">Delete</button>
+              ` : ""}
               <button type="button" class="hcs-btn hcs-btn-primary" id="f-save">Save</button>
             </div>
           </div>
@@ -1071,9 +1081,21 @@
 
     async _deleteDialogEvent() {
       const data = this._dialogData;
-      if (!confirm("Delete this event?")) return;
+      const rangeSelect = this._dialogEl.querySelector("#f-delete-range");
+      const rangeValue = rangeSelect ? rangeSelect.value : "";
+      const isAllSeries = rangeValue === "ALL";
+
+      const confirmMessage = isAllSeries
+        ? "Delete the entire recurring series? This removes every occurrence, including past ones."
+        : rangeValue === "THISANDFUTURE"
+          ? "Delete this and all following occurrences?"
+          : "Delete this event?";
+      if (!confirm(confirmMessage)) return;
+
       try {
-        await deleteCalendarEvent(this._hass, this._entityId, data.uid, data.recurrenceId, "");
+        const recurrenceId = isAllSeries ? null : data.recurrenceId;
+        const recurrenceRange = isAllSeries ? "" : rangeValue;
+        await deleteCalendarEvent(this._hass, this._entityId, data.uid, recurrenceId, recurrenceRange);
         this._closeDialog();
         this._loadEvents();
       } catch (err) {
