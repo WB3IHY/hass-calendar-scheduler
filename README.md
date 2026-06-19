@@ -50,16 +50,32 @@ you — but it's plain JSON if you ever want to script around it.
 
 ## Installation
 
-The automation always has to be added by hand — HACS only manages frontend
-resources, not automations — but the card itself can be installed either
-through HACS or manually.
+HACS only manages frontend resources, not automations, so the backend is
+distributed as a Home Assistant Blueprint instead — one click to import, no
+copy-pasting YAML. The card itself can then be installed either through
+HACS or manually.
 
 ### 1. Add the automation (required either way)
 
-In Home Assistant, go to *Settings → Automations → Create Automation →
-Edit in YAML*, and paste the contents of `automation.yaml`. Save it. If
-your Local Calendar entity isn't `calendar.calendar`, edit the `entity_id`
-in the automation's triggers.
+Click the badge to open the blueprint import dialog in your Home Assistant
+instance:
+
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2FWB3IHY%2Fhass-calendar-scheduler%2Fmain%2Fautomation.yaml)
+
+Click *Import Blueprint*, pick your Local Calendar entity (defaults to
+`calendar.calendar`), and save. If the badge doesn't work (e.g. you're
+viewing this on GitHub mobile), import it manually instead: *Settings →
+Automations & Scenes → Blueprints → Import Blueprint*, and paste in
+`https://raw.githubusercontent.com/WB3IHY/hass-calendar-scheduler/main/automation.yaml`.
+
+**Updating later:** go to *Settings → Automations & Scenes → Blueprints*,
+open the menu (⋮) on "Calendar Scheduler - Master Automation", and choose
+*Re-import Blueprint*. This pulls the latest version straight from GitHub
+and applies it to your existing automation — still no copy-pasting.
+
+**Upgrading from a pre-blueprint install:** if you added the automation by
+hand before this change, delete that automation and import the blueprint
+instead.
 
 ### 2. Install the card
 

@@ -1,23 +1,35 @@
-alias: Calendar Scheduler - Master Automation
-description: >-
-  Every minute, checks calendar.calendar for events starting or ending in
-  the past minute and parses their description as JSON
-  ({"entities":[{"entity_id":"...","service":"...","params":{...},"revert":true}]}).
-  Fires each listed service call when an event starts. When an event ends,
-  fires each entity's reverse action (the opposite turn_on/turn_off for
-  simple toggle domains, or a fixed domain-appropriate "off" service for
-  cover/climate/media_player), unless that entity's "revert" field is
-  false (a one-shot trigger with no reverse action) or its domain has no
-  off-state (e.g. scene). "revert" defaults to true when omitted.
-  Polls once a minute via calendar.get_events rather than using the
-  built-in calendar trigger, which only rescans its schedule every 15
-  minutes and can silently miss events created shortly before they start.
+blueprint:
+  name: Calendar Scheduler - Master Automation
+  description: >-
+    Every minute, checks the chosen Local Calendar for events starting or
+    ending in the past minute and parses their description as JSON
+    ({"entities":[{"entity_id":"...","service":"...","params":{...},"revert":true}]}).
+    Fires each listed service call when an event starts. When an event ends,
+    fires each entity's reverse action (the opposite turn_on/turn_off for
+    simple toggle domains, or a fixed domain-appropriate "off" service for
+    cover/climate/media_player), unless that entity's "revert" field is
+    false (a one-shot trigger with no reverse action) or its domain has no
+    off-state (e.g. scene). "revert" defaults to true when omitted.
+    Polls once a minute via calendar.get_events rather than using the
+    built-in calendar trigger, which only rescans its schedule every 15
+    minutes and can silently miss events created shortly before they start.
+  domain: automation
+  input:
+    calendar_entity:
+      name: Calendar
+      description: The Local Calendar entity that the Calendar Scheduler card writes events to.
+      default: calendar.calendar
+      selector:
+        entity:
+          domain: calendar
+
 mode: single
 triggers:
   - trigger: time_pattern
     minutes: "*"
 actions:
   - variables:
+      calendar_entity: !input calendar_entity
       window_start: "{{ (trigger.now - timedelta(minutes=1)).isoformat() }}"
       window_end: "{{ trigger.now.isoformat() }}"
       off_overrides:
@@ -26,13 +38,13 @@ actions:
         - scene
   - action: calendar.get_events
     target:
-      entity_id: calendar.calendar
+      entity_id: !input calendar_entity
     data:
       start_date_time: "{{ window_start }}"
       end_date_time: "{{ window_end }}"
     response_variable: cal_events
   - repeat:
-      for_each: "{{ cal_events['calendar.calendar'].events }}"
+      for_each: "{{ cal_events[calendar_entity].events }}"
       sequence:
         - choose:
             - conditions:
