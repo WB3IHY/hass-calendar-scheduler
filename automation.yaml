@@ -13,6 +13,12 @@ blueprint:
     Polls once a minute via calendar.get_events rather than using the
     built-in calendar trigger, which only rescans its schedule every 15
     minutes and can silently miss events created shortly before they start.
+    An event's start and/or end may instead be anchored to sunrise/sunset
+    via a "start_anchor"/"end_anchor" field
+    ({"sun":"sunset","offset_minutes":-60}); when present, that field's
+    actual fire time is recomputed every run from sun.sun's live
+    next_setting/next_rising rather than trusting the event's stored
+    literal time, so it never drifts.
   domain: automation
   input:
     calendar_entity:
@@ -32,6 +38,8 @@ actions:
       calendar_entity: !input calendar_entity
       window_start: "{{ (trigger.now - timedelta(minutes=1)).isoformat() }}"
       window_end: "{{ trigger.now.isoformat() }}"
+      day_start: "{{ trigger.now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat() }}"
+      day_end: "{{ (trigger.now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)).isoformat() }}"
       off_overrides:
         cover: cover.close_cover
       no_off_domains:
@@ -40,8 +48,8 @@ actions:
     target:
       entity_id: !input calendar_entity
     data:
-      start_date_time: "{{ window_start }}"
-      end_date_time: "{{ window_end }}"
+      start_date_time: "{{ day_start }}"
+      end_date_time: "{{ day_end }}"
     response_variable: cal_events
   - repeat:
       for_each: "{{ cal_events[calendar_entity].events }}"
@@ -56,12 +64,27 @@ actions:
               sequence:
                 - variables:
                     payload: "{{ repeat.item.description | from_json }}"
+                - variables:
+                    start_target: >-
+                      {% if payload.start_anchor is defined %}
+                        {% set sun_attr = 'next_setting' if payload.start_anchor.sun == 'sunset' else 'next_rising' %}
+                        {{ (as_datetime(state_attr('sun.sun', sun_attr)) + timedelta(minutes=payload.start_anchor.offset_minutes)).isoformat() }}
+                      {% else %}
+                        {{ repeat.item.start }}
+                      {% endif %}
+                    end_target: >-
+                      {% if payload.end_anchor is defined %}
+                        {% set sun_attr = 'next_setting' if payload.end_anchor.sun == 'sunset' else 'next_rising' %}
+                        {{ (as_datetime(state_attr('sun.sun', sun_attr)) + timedelta(minutes=payload.end_anchor.offset_minutes)).isoformat() }}
+                      {% else %}
+                        {{ repeat.item.end }}
+                      {% endif %}
                     is_start: >-
-                      {{ as_datetime(repeat.item.start) >= as_datetime(window_start) and
-                         as_datetime(repeat.item.start) < as_datetime(window_end) }}
+                      {{ as_datetime(start_target) >= as_datetime(window_start) and
+                         as_datetime(start_target) < as_datetime(window_end) }}
                     is_end: >-
-                      {{ as_datetime(repeat.item.end) >= as_datetime(window_start) and
-                         as_datetime(repeat.item.end) < as_datetime(window_end) }}
+                      {{ as_datetime(end_target) >= as_datetime(window_start) and
+                         as_datetime(end_target) < as_datetime(window_end) }}
                 - repeat:
                     for_each: "{{ payload.entities }}"
                     sequence:

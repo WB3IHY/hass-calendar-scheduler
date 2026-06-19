@@ -150,6 +150,30 @@
     return new Date(event.end.dateTime || `${event.end.date}T00:00:00`);
   }
 
+  function anchorFromPayload(anchor, defaultDirection) {
+    if (!anchor) return { type: "clock", direction: defaultDirection, minutes: 60 };
+    return {
+      type: anchor.sun,
+      direction: anchor.offset_minutes < 0 ? "before" : "after",
+      minutes: Math.abs(anchor.offset_minutes),
+    };
+  }
+
+  function anchorToPayload(anchor) {
+    if (anchor.type === "clock") return null;
+    const signedMinutes = anchor.direction === "before" ? -Math.abs(anchor.minutes) : Math.abs(anchor.minutes);
+    return { sun: anchor.type, offset_minutes: signedMinutes };
+  }
+
+  function sunTargetDate(hass, anchor) {
+    const attr = anchor.type === "sunset" ? "next_setting" : "next_rising";
+    const sunState = hass.states["sun.sun"];
+    const base = sunState && sunState.attributes && sunState.attributes[attr];
+    if (!base) return null;
+    const sign = anchor.direction === "before" ? -1 : 1;
+    return new Date(new Date(base).getTime() + sign * anchor.minutes * 60000);
+  }
+
   async function fetchEntitiesForDisplay(hass) {
     const result = await hass.callWS({ type: "config/entity_registry/list_for_display" });
     return result.entities.map((e) => ({
@@ -268,6 +292,10 @@
     .hcs-toggle-btn.active { background: var(--primary-color, #03a9f4); color: var(--text-primary-color, #fff); border-color: var(--primary-color, #03a9f4); }
     .hcs-hint { font-size: 12px; color: var(--secondary-text-color, #555); margin: 0; }
     .hcs-delete-range { padding: 8px; border-radius: 4px; border: 1px solid var(--divider-color, #ccc); background: var(--card-background-color, #fff); color: var(--primary-text-color, #000); font-size: 13px; }
+    .hcs-anchor-type-toggle .hcs-toggle-btn { font-size: 11px; padding: 4px 6px; }
+    .hcs-anchor-offset { display: flex; align-items: flex-end; gap: 8px; margin-top: 2px; }
+    .hcs-anchor-offset .hcs-anchor-direction-toggle { flex: 1; }
+    .hcs-anchor-offset .hcs-control { width: 64px; flex-shrink: 0; }
   `;
 
   let modalStylesInjected = false;
@@ -635,6 +663,100 @@
       return row;
     }
 
+    _renderTimeFieldHtml(field, label) {
+      const anchor = this._dialogData[`${field}Anchor`];
+      const date = this._dialogData[field];
+      return `
+        <div class="hcs-field hcs-time-field" data-field="${field}">
+          <span>${label}</span>
+          <div class="hcs-toggle-group hcs-anchor-type-toggle">
+            <button type="button" class="hcs-toggle-btn ${anchor.type === "clock" ? "active" : ""}" data-anchor-type="clock">Clock</button>
+            <button type="button" class="hcs-toggle-btn ${anchor.type === "sunset" ? "active" : ""}" data-anchor-type="sunset">Sunset</button>
+            <button type="button" class="hcs-toggle-btn ${anchor.type === "sunrise" ? "active" : ""}" data-anchor-type="sunrise">Sunrise</button>
+          </div>
+          <input type="datetime-local" class="f-time-input" value="${toLocalInputValue(date)}" ${anchor.type !== "clock" ? "disabled" : ""}>
+          <div class="hcs-anchor-offset" ${anchor.type === "clock" ? "hidden" : ""}>
+            <div class="hcs-toggle-group hcs-anchor-direction-toggle">
+              <button type="button" class="hcs-toggle-btn ${anchor.direction === "before" ? "active" : ""}" data-anchor-direction="before">Before</button>
+              <button type="button" class="hcs-toggle-btn ${anchor.direction === "after" ? "active" : ""}" data-anchor-direction="after">After</button>
+            </div>
+            <label class="hcs-control">
+              <span>Minutes</span>
+              <input type="number" min="0" step="5" class="f-anchor-minutes" value="${anchor.minutes}">
+            </label>
+          </div>
+        </div>
+      `;
+    }
+
+    _recomputeAnchorDate(field) {
+      const anchor = this._dialogData[`${field}Anchor`];
+      if (anchor.type === "clock") return;
+      const target = sunTargetDate(this._hass, anchor);
+      if (target) this._dialogData[field] = target;
+    }
+
+    _normalizeAnchoredRange() {
+      const data = this._dialogData;
+      // Only auto-advance when both ends are sun-anchored (e.g. sunset -> next sunrise).
+      // If only one side is anchored, a same-day clock time on the other side is
+      // presumably intentional, so leave it for the normal start<end validation instead.
+      if (data.startAnchor.type === "clock" || data.endAnchor.type === "clock") return;
+      while (data.end <= data.start) {
+        data.end = new Date(data.end.getTime() + 86400000);
+      }
+    }
+
+    _updateTimePreviews() {
+      ["start", "end"].forEach((field) => {
+        const container = this._dialogEl.querySelector(`.hcs-time-field[data-field="${field}"]`);
+        const input = container && container.querySelector(".f-time-input");
+        if (input) input.value = toLocalInputValue(this._dialogData[field]);
+      });
+    }
+
+    _refreshTimeField(field) {
+      this._recomputeAnchorDate(field);
+      this._normalizeAnchoredRange();
+      ["start", "end"].forEach((f) => {
+        const container = this._dialogEl.querySelector(`.hcs-time-field[data-field="${f}"]`);
+        if (container) container.outerHTML = this._renderTimeFieldHtml(f, f === "start" ? "Start" : "End");
+      });
+      this._wireTimeField("start");
+      this._wireTimeField("end");
+    }
+
+    _wireTimeField(field) {
+      const container = this._dialogEl.querySelector(`.hcs-time-field[data-field="${field}"]`);
+      const timeInput = container.querySelector(".f-time-input");
+      const minutesInput = container.querySelector(".f-anchor-minutes");
+
+      timeInput.addEventListener("change", () => {
+        this._dialogData[field] = fromLocalInputValue(timeInput.value);
+      });
+
+      container.querySelectorAll("[data-anchor-type]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          this._dialogData[`${field}Anchor`].type = btn.getAttribute("data-anchor-type");
+          this._refreshTimeField(field);
+        });
+      });
+
+      container.querySelectorAll("[data-anchor-direction]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          this._dialogData[`${field}Anchor`].direction = btn.getAttribute("data-anchor-direction");
+          this._refreshTimeField(field);
+        });
+      });
+
+      minutesInput.addEventListener("input", () => {
+        this._dialogData[`${field}Anchor`].minutes = Math.max(0, Number(minutesInput.value) || 0);
+        this._recomputeAnchorDate(field);
+        this._normalizeAnchoredRange();
+        this._updateTimePreviews();
+      });
+    }
+
     _openDialog(opts) {
       const isEdit = opts.mode === "edit";
       const event = opts.event;
@@ -646,6 +768,8 @@
         name: isEdit ? event.summary : "",
         start: isEdit ? event.start : opts.start,
         end: isEdit ? event.end : opts.end,
+        startAnchor: anchorFromPayload(payload && payload.start_anchor, "before"),
+        endAnchor: anchorFromPayload(payload && payload.end_anchor, "after"),
         recurrence: "none",
         customDays: [],
         entities: isEdit && payload ? this._expandPayloadToRows(payload) : [],
@@ -680,14 +804,8 @@
                 <input type="text" id="f-name" placeholder="e.g. Evening lights">
               </label>
               <div class="hcs-field-row">
-                <label class="hcs-field">
-                  <span>Start</span>
-                  <input type="datetime-local" id="f-start">
-                </label>
-                <label class="hcs-field">
-                  <span>End</span>
-                  <input type="datetime-local" id="f-end">
-                </label>
+                ${this._renderTimeFieldHtml("start", "Start")}
+                ${this._renderTimeFieldHtml("end", "End")}
               </div>
               ${isEdit
                 ? (data.recurrenceId ? `<p class="hcs-hint">Part of a recurring series — saving this edit applies to this occurrence only. Use the delete options below to remove more than one occurrence.</p>` : "")
@@ -750,8 +868,6 @@
       document.addEventListener("keydown", this._dialogEscHandler);
 
       this._nameInput = overlayEl.querySelector("#f-name");
-      this._startInput = overlayEl.querySelector("#f-start");
-      this._endInput = overlayEl.querySelector("#f-end");
       this._recurrenceSelect = overlayEl.querySelector("#f-recurrence");
       this._customDaysEl = overlayEl.querySelector("#f-custom-days");
       this._searchInput = overlayEl.querySelector("#f-entity-search");
@@ -759,12 +875,10 @@
       this._selectedEntitiesEl = overlayEl.querySelector("#f-selected-entities");
 
       this._nameInput.value = data.name;
-      this._startInput.value = toLocalInputValue(data.start);
-      this._endInput.value = toLocalInputValue(data.end);
 
       this._nameInput.addEventListener("input", () => { data.name = this._nameInput.value; });
-      this._startInput.addEventListener("change", () => { data.start = fromLocalInputValue(this._startInput.value); });
-      this._endInput.addEventListener("change", () => { data.end = fromLocalInputValue(this._endInput.value); });
+      this._wireTimeField("start");
+      this._wireTimeField("end");
 
       if (this._recurrenceSelect) {
         this._recurrenceSelect.value = data.recurrence;
@@ -1055,7 +1169,12 @@
         alert("End time must be after start time.");
         return;
       }
-      const description = JSON.stringify({ entities: this._buildEntitiesPayload() });
+      const payloadObj = { entities: this._buildEntitiesPayload() };
+      const startAnchorPayload = anchorToPayload(data.startAnchor);
+      const endAnchorPayload = anchorToPayload(data.endAnchor);
+      if (startAnchorPayload) payloadObj.start_anchor = startAnchorPayload;
+      if (endAnchorPayload) payloadObj.end_anchor = endAnchorPayload;
+      const description = JSON.stringify(payloadObj);
       const eventPayload = {
         summary: data.name || "Scheduled event",
         description,

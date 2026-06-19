@@ -32,7 +32,9 @@ JSON:
     { "entity_id": "light.kitchen", "service": "light.turn_on", "params": { "brightness_pct": 80 }, "revert": true },
     { "entity_id": "switch.fan", "service": "switch.turn_off", "params": {}, "revert": false },
     { "entity_id": "climate.living_room", "service": "climate.set_temperature", "params": { "temperature": 21, "hvac_mode": "heat" }, "revert": true }
-  ]
+  ],
+  "start_anchor": { "sun": "sunset", "offset_minutes": -60 },
+  "end_anchor": { "sun": "sunrise", "offset_minutes": 60 }
 }
 ```
 
@@ -44,6 +46,14 @@ one-shot trigger: the entity is set once at event start and stays that way
 indefinitely, with no action at event end — e.g. `switch.fan` above turns
 off when the event starts and is left off, regardless of when the event
 ends.
+
+`start_anchor`/`end_anchor` are optional and independent of each other —
+either, both, or neither may be present. When present, that side of the
+event fires relative to sunrise/sunset instead of a fixed clock time
+(`offset_minutes` is negative for "before", positive for "after"). The
+example above turns the kitchen light on an hour before sunset and reverts
+everything an hour after the next sunrise. Omitted entirely (the default),
+that side just uses the event's literal start/end time, exactly as before.
 
 You generally won't need to write this by hand — the dialog builds it for
 you — but it's plain JSON if you ever want to script around it.
@@ -139,9 +149,13 @@ for the `root` user.
   block to edit it. When editing an occurrence of a recurring event, the
   Delete button offers a choice of scope: this event, this and all
   following occurrences, or the entire series.
-- In the dialog, give the event a name, set start/end times, optionally set
-  a recurrence (daily, weekly, weekdays, weekends, or custom days), and
-  search for entities to add. Each entity gets domain-aware controls:
+- In the dialog, give the event a name and set start/end times. Each side
+  defaults to **Clock** but can be switched to **Sunset** or **Sunrise**,
+  which replaces the time picker with a Before/After toggle and a minutes
+  offset (e.g. Start = Sunset, Before, 60 → "an hour before sunset"). You
+  can optionally set a recurrence (daily, weekly, weekdays, weekends, or
+  custom days), and search for entities to add. Each entity gets
+  domain-aware controls:
   - **light**: On/Off toggle (brightness and color temperature sliders
     appear when On is selected)
   - **switch / input_boolean / everything else**: On/Off toggle
@@ -176,6 +190,13 @@ a minute of the scheduled time, not instantaneously.
 - Requires a reasonably current Home Assistant (2024.10+) for the
   `trigger:`/`action:` automation syntax and `color_temp_kelvin` service
   field used here.
+- For Sunset/Sunrise-anchored events, the block's position on the grid is
+  computed once, when you create or save the event, and doesn't visually
+  drift as sunset/sunrise shifts through the seasons (the automation can't
+  rewrite an existing calendar event — only the card's own dialog can). The
+  actual firing time is unaffected by this and is always correct: it's
+  recomputed from live sun data every time the automation runs, never from
+  the event's stored position.
 
 ## License
 
