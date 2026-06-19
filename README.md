@@ -139,6 +139,14 @@ for the `root` user.
 - Events whose entities overlap with another event's entities in the same
   time range are highlighted in a warning color.
 
+## Timing precision
+
+The automation checks for starting/ending events once a minute (using
+`calendar.get_events` rather than HA's built-in `calendar` trigger, which
+only rescans its schedule every 15 minutes and can silently miss events
+created shortly before they start). This means actions fire within about
+a minute of the scheduled time, not instantaneously.
+
 ## Known limitations (current version)
 
 - All-day calendar events are not shown or creatable from the card — it's

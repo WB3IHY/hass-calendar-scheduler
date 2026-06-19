@@ -1,61 +1,77 @@
 alias: Calendar Scheduler - Master Automation
 description: >-
-  Reads calendar.calendar event descriptions as JSON
-  ({"entities":[{"entity_id":"...","service":"...","params":{...},"revert":true}]})
-  and fires each listed service call on event start. On event end, calls
-  each entity's reverse action (the opposite turn_on/turn_off for simple
-  toggle domains, or a fixed domain-appropriate "off" service for cover/
-  climate/media_player), unless that entity's "revert" field is false (a
-  one-shot trigger with no reverse action) or its domain has no off-state
-  (e.g. scene). "revert" defaults to true when omitted.
-mode: parallel
-trigger:
-  - trigger: calendar
-    entity_id: calendar.calendar
-    event: start
-    id: start
-  - trigger: calendar
-    entity_id: calendar.calendar
-    event: end
-    id: end
-condition:
-  - condition: template
-    value_template: >-
-      {{ trigger.calendar_event.description is defined and
-         trigger.calendar_event.description not in [none, ''] }}
-action:
+  Every minute, checks calendar.calendar for events starting or ending in
+  the past minute and parses their description as JSON
+  ({"entities":[{"entity_id":"...","service":"...","params":{...},"revert":true}]}).
+  Fires each listed service call when an event starts. When an event ends,
+  fires each entity's reverse action (the opposite turn_on/turn_off for
+  simple toggle domains, or a fixed domain-appropriate "off" service for
+  cover/climate/media_player), unless that entity's "revert" field is
+  false (a one-shot trigger with no reverse action) or its domain has no
+  off-state (e.g. scene). "revert" defaults to true when omitted.
+  Polls once a minute via calendar.get_events rather than using the
+  built-in calendar trigger, which only rescans its schedule every 15
+  minutes and can silently miss events created shortly before they start.
+mode: single
+triggers:
+  - trigger: time_pattern
+    minutes: "*"
+actions:
   - variables:
-      payload: "{{ trigger.calendar_event.description | from_json }}"
+      window_start: "{{ (trigger.now - timedelta(minutes=1)).isoformat() }}"
+      window_end: "{{ trigger.now.isoformat() }}"
       off_overrides:
         cover: cover.close_cover
       no_off_domains:
         - scene
+  - action: calendar.get_events
+    target:
+      entity_id: calendar.calendar
+    data:
+      start_date_time: "{{ window_start }}"
+      end_date_time: "{{ window_end }}"
+    response_variable: cal_events
   - repeat:
-      for_each: "{{ payload.entities }}"
+      for_each: "{{ cal_events['calendar.calendar'].events }}"
       sequence:
-        - variables:
-            domain: "{{ repeat.item.entity_id.split('.')[0] }}"
-            should_revert: "{{ repeat.item.revert if repeat.item.revert is defined else true }}"
         - choose:
             - conditions:
-                - condition: trigger
-                  id: start
-              sequence:
-                - action: "{{ repeat.item.service }}"
-                  target:
-                    entity_id: "{{ repeat.item.entity_id }}"
-                  data: "{{ repeat.item.params | default({}) }}"
-            - conditions:
-                - condition: trigger
-                  id: end
                 - condition: template
                   value_template: >-
-                    {{ should_revert and domain not in no_off_domains }}
+                    {{ repeat.item.description is defined and
+                       repeat.item.description not in [none, ''] and
+                       (repeat.item.description | trim).startswith('{') }}
               sequence:
-                - action: >-
-                    {{ off_overrides[domain] if domain in off_overrides
-                       else (domain ~ '.turn_off') if repeat.item.service.endswith('.turn_on')
-                       else (domain ~ '.turn_on') if repeat.item.service.endswith('.turn_off')
-                       else (domain ~ '.turn_off') }}
-                  target:
-                    entity_id: "{{ repeat.item.entity_id }}"
+                - variables:
+                    payload: "{{ repeat.item.description | from_json }}"
+                    is_start: >-
+                      {{ as_datetime(repeat.item.start) >= as_datetime(window_start) and
+                         as_datetime(repeat.item.start) < as_datetime(window_end) }}
+                    is_end: >-
+                      {{ as_datetime(repeat.item.end) >= as_datetime(window_start) and
+                         as_datetime(repeat.item.end) < as_datetime(window_end) }}
+                - repeat:
+                    for_each: "{{ payload.entities }}"
+                    sequence:
+                      - variables:
+                          domain: "{{ repeat.item.entity_id.split('.')[0] }}"
+                          should_revert: >-
+                            {{ repeat.item.revert if repeat.item.revert is defined else true }}
+                      - choose:
+                          - conditions:
+                              - "{{ is_start }}"
+                            sequence:
+                              - action: "{{ repeat.item.service }}"
+                                target:
+                                  entity_id: "{{ repeat.item.entity_id }}"
+                                data: "{{ repeat.item.params | default({}) }}"
+                          - conditions:
+                              - "{{ is_end and should_revert and domain not in no_off_domains }}"
+                            sequence:
+                              - action: >-
+                                  {{ off_overrides[domain] if domain in off_overrides
+                                     else (domain ~ '.turn_off') if repeat.item.service.endswith('.turn_on')
+                                     else (domain ~ '.turn_on') if repeat.item.service.endswith('.turn_off')
+                                     else (domain ~ '.turn_off') }}
+                                target:
+                                  entity_id: "{{ repeat.item.entity_id }}"
