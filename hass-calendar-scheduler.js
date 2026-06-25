@@ -351,6 +351,7 @@
       this._dialogEl = null;
       this._dialogData = null;
       this._scrollToNow = true;
+      this._focusDate = startOfDay(new Date());
       this.attachShadow({ mode: "open" });
     }
 
@@ -427,34 +428,35 @@
 
     _navigate(delta) {
       if (this._view === "month") {
-        this._anchor = addMonths(this._anchor, delta);
+        const d = new Date(this._focusDate);
+        d.setMonth(d.getMonth() + delta);
+        this._focusDate = d;
+        this._anchor = startOfMonth(this._focusDate);
+      } else if (this._view === "week") {
+        this._focusDate = addDays(this._focusDate, delta * 7);
+        this._anchor = startOfWeek(this._focusDate);
       } else {
-        const step = this._view === "day" ? 1 : 7;
-        this._anchor = addDays(this._anchor, delta * step);
+        this._focusDate = addDays(this._focusDate, delta);
+        this._anchor = startOfDay(this._focusDate);
       }
       this._loadEvents();
     }
 
     _goToday() {
-      if (this._view === "month") {
-        this._anchor = startOfMonth(new Date());
-      } else {
-        this._anchor = this._view === "day" ? startOfDay(new Date()) : startOfWeek(new Date());
-      }
+      this._focusDate = startOfDay(new Date());
+      this._anchor = this._view === "month" ? startOfMonth(this._focusDate)
+        : this._view === "day" ? this._focusDate
+        : startOfWeek(this._focusDate);
       this._scrollToNow = true;
       this._loadEvents();
     }
 
     _setView(view) {
       if (this._view === view) return;
-      if (view === "month") {
-        this._anchor = startOfMonth(this._anchor);
-      } else if (view === "day") {
-        this._anchor = startOfDay(this._anchor);
-      } else {
-        this._anchor = startOfWeek(this._anchor);
-      }
       this._view = view;
+      this._anchor = view === "month" ? startOfMonth(this._focusDate)
+        : view === "day" ? startOfDay(this._focusDate)
+        : startOfWeek(this._focusDate);
       this._scrollToNow = true;
       this._loadEvents();
     }
@@ -766,6 +768,10 @@
             row.actions.source = true;
             row.params.source = item.params.source;
           }
+        } else if (kind === "auto-trigger") {
+          if (item.service === "automation.trigger") { row.state = "trigger"; row.revert = false; }
+          else if (item.service === "automation.turn_off") row.state = "off";
+          else row.state = "on";
         } else if (kind === "light" || kind === "toggle") {
           row.state = item.service && item.service.endsWith(".turn_off") ? "off" : "on";
           Object.assign(row.params, item.params || {});
@@ -791,7 +797,10 @@
         state: "on",
         revert: true,
       };
-      if (kind === "light") {
+      if (kind === "auto-trigger") {
+        row.state = "trigger";
+        row.revert = false;
+      } else if (kind === "light") {
         row.params.brightness_pct = 100;
         if (attrs.min_color_temp_kelvin && attrs.max_color_temp_kelvin) {
           row.params.color_temp_kelvin = Math.round((attrs.min_color_temp_kelvin + attrs.max_color_temp_kelvin) / 2);
@@ -960,6 +969,15 @@
                 <input type="checkbox" id="f-point-in-time"${data.pointInTime ? ' checked' : ''}>
                 <span>Point-in-time event (no end time)</span>
               </label>
+              ${isEdit && data.recurrenceId ? `
+              <label class="hcs-field">
+                <span>Edit scope</span>
+                <select id="f-save-range">
+                  <option value="">This occurrence only</option>
+                  <option value="THISANDFUTURE">This and all following</option>
+                </select>
+              </label>
+              ` : ""}
               ${isEdit
                 ? ""
                 : `
@@ -995,10 +1013,6 @@
               <button type="button" class="hcs-btn" id="f-cancel">Cancel</button>
               ${isEdit ? `
                 ${data.recurrenceId ? `
-                  <select id="f-save-range" class="hcs-delete-range">
-                    <option value="">Save this occurrence only</option>
-                    <option value="THISANDFUTURE">Save this and following</option>
-                  </select>
                   <select id="f-delete-range" class="hcs-delete-range">
                     <option value="">Delete this event</option>
                     <option value="THISANDFUTURE">Delete this and following</option>
@@ -1215,8 +1229,25 @@
             </label>
             ${this._renderRevertCheckboxHtml(row)}
           `;
-        case "auto-trigger":
-          return `<p class="hcs-hint">Triggers the automation's actions when the event starts.</p>`;
+        case "auto-trigger": {
+          const autoHint = row.state === "trigger"
+            ? "Runs the automation's action sequence at event start."
+            : row.state === "on"
+              ? `Enables the automation at event start${row.revert ? ", disables it at event end." : "."}`
+              : `Disables the automation at event start${row.revert ? ", re-enables it at event end." : "."}`;
+          return `
+            <div class="hcs-control hcs-state-toggle">
+              <span>Action</span>
+              <div class="hcs-toggle-group">
+                <button type="button" class="hcs-toggle-btn ${row.state === "trigger" ? "active" : ""}" data-state="trigger">Trigger</button>
+                <button type="button" class="hcs-toggle-btn ${row.state === "on" ? "active" : ""}" data-state="on">Enable</button>
+                <button type="button" class="hcs-toggle-btn ${row.state === "off" ? "active" : ""}" data-state="off">Disable</button>
+              </div>
+            </div>
+            <p class="hcs-hint">${autoHint}</p>
+            ${row.state !== "trigger" ? this._renderRevertCheckboxHtml(row) : ""}
+          `;
+        }
         case "trigger":
           return `<p class="hcs-hint">Triggers the scene when the event starts.</p>`;
         default:
@@ -1303,7 +1334,12 @@
       this._dialogData.entities.forEach((row) => {
         const revert = forceNoRevert ? false : row.revert;
         if (row.kind === "auto-trigger") {
-          entitiesPayload.push({ entity_id: row.entityId, service: "automation.trigger", params: {}, revert: false });
+          if (row.state === "trigger") {
+            entitiesPayload.push({ entity_id: row.entityId, service: "automation.trigger", params: {}, revert: false });
+          } else {
+            const service = row.state === "off" ? "automation.turn_off" : "automation.turn_on";
+            entitiesPayload.push({ entity_id: row.entityId, service, params: {}, revert });
+          }
         } else if (row.kind === "media_player") {
           if (row.actions.volume) {
             entitiesPayload.push({ entity_id: row.entityId, service: "media_player.volume_set", params: { volume_level: row.params.volume_level }, revert });
