@@ -16,6 +16,7 @@
     switch: "toggle",
     input_boolean: "toggle",
     scene: "trigger",
+    automation: "auto-trigger",
     climate: "climate",
     media_player: "media_player",
     cover: "cover",
@@ -40,6 +41,19 @@
   function addDays(date, n) {
     const d = new Date(date);
     d.setDate(d.getDate() + n);
+    return d;
+  }
+
+  function startOfMonth(date) {
+    const d = new Date(date);
+    d.setDate(1);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  function addMonths(date, n) {
+    const d = startOfMonth(date);
+    d.setMonth(d.getMonth() + n);
     return d;
   }
 
@@ -237,6 +251,7 @@
     .view-btn.active { background: var(--primary-color); color: var(--text-primary-color, #fff); border-color: var(--primary-color); }
     .range-label { font-weight: 500; margin-left: 8px; }
     .grid { display: flex; flex-direction: column; height: 600px; }
+    .grid.month-view { height: auto; min-height: 500px; }
     .grid-header { display: flex; border-bottom: 1px solid var(--divider-color); }
     .gutter-spacer { width: 56px; flex-shrink: 0; }
     .day-headers { flex: 1; display: flex; }
@@ -251,7 +266,20 @@
     .event-block { position: absolute; background: var(--primary-color); color: var(--text-primary-color, #fff); border-radius: 4px; padding: 2px 4px; font-size: 12px; overflow: hidden; box-sizing: border-box; cursor: pointer; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); }
     .event-block.plain { background: var(--secondary-background-color); color: var(--primary-text-color); opacity: 0.7; }
     .event-block.overlap { background: var(--warning-color, #ff9800); border: 2px solid var(--error-color, #db4437); }
+    .event-block.point-event { border-radius: 2px; padding: 1px 4px; border-left: 3px solid rgba(0,0,0,0.25); }
     .event-title { display: block; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+    .month-grid-header { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid var(--divider-color); }
+    .month-grid-dayname { text-align: center; padding: 6px 4px; font-size: 12px; font-weight: 500; color: var(--secondary-text-color); }
+    .month-grid-body { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: minmax(88px, 1fr); }
+    .month-cell { border-right: 1px solid var(--divider-color); border-bottom: 1px solid var(--divider-color); padding: 4px; cursor: pointer; overflow: hidden; box-sizing: border-box; }
+    .month-cell:nth-child(7n) { border-right: none; }
+    .month-cell.other-month { opacity: 0.4; }
+    .month-cell-day { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; margin-bottom: 2px; border-radius: 50%; }
+    .month-cell.today .month-cell-day { background: var(--primary-color); color: var(--text-primary-color, #fff); }
+    .month-event { font-size: 11px; background: var(--primary-color); color: var(--text-primary-color, #fff); border-radius: 3px; padding: 1px 4px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; display: block; }
+    .month-event.plain { background: var(--secondary-background-color); color: var(--primary-text-color); }
+    .month-event.overlap { background: var(--warning-color, #ff9800); }
+    .month-more { font-size: 11px; color: var(--secondary-text-color); padding: 1px 4px; display: block; }
   `;
 
   const MODAL_CSS = `
@@ -322,6 +350,7 @@
       this._loading = false;
       this._dialogEl = null;
       this._dialogData = null;
+      this._scrollToNow = true;
       this.attachShadow({ mode: "open" });
     }
 
@@ -380,6 +409,7 @@
             <div class="view-toggle">
               <button class="view-btn" id="view-day" data-view="day">Day</button>
               <button class="view-btn" id="view-week" data-view="week">Week</button>
+              <button class="view-btn" id="view-month" data-view="month">Month</button>
             </div>
           </div>
           <div class="grid" id="grid"></div>
@@ -392,27 +422,51 @@
       this.shadowRoot.getElementById("today").addEventListener("click", () => this._goToday());
       this.shadowRoot.getElementById("view-day").addEventListener("click", () => this._setView("day"));
       this.shadowRoot.getElementById("view-week").addEventListener("click", () => this._setView("week"));
+      this.shadowRoot.getElementById("view-month").addEventListener("click", () => this._setView("month"));
     }
 
     _navigate(delta) {
-      const step = this._view === "day" ? 1 : 7;
-      this._anchor = addDays(this._anchor, delta * step);
+      if (this._view === "month") {
+        this._anchor = addMonths(this._anchor, delta);
+      } else {
+        const step = this._view === "day" ? 1 : 7;
+        this._anchor = addDays(this._anchor, delta * step);
+      }
       this._loadEvents();
     }
 
     _goToday() {
-      this._anchor = this._view === "day" ? startOfDay(new Date()) : startOfWeek(new Date());
+      if (this._view === "month") {
+        this._anchor = startOfMonth(new Date());
+      } else {
+        this._anchor = this._view === "day" ? startOfDay(new Date()) : startOfWeek(new Date());
+      }
+      this._scrollToNow = true;
       this._loadEvents();
     }
 
     _setView(view) {
       if (this._view === view) return;
-      this._anchor = view === "day" ? startOfDay(this._anchor) : startOfWeek(this._anchor);
+      if (view === "month") {
+        this._anchor = startOfMonth(this._anchor);
+      } else if (view === "day") {
+        this._anchor = startOfDay(this._anchor);
+      } else {
+        this._anchor = startOfWeek(this._anchor);
+      }
       this._view = view;
+      this._scrollToNow = true;
       this._loadEvents();
     }
 
     _visibleRange() {
+      if (this._view === "month") {
+        const monthStart = startOfMonth(this._anchor);
+        const monthEnd = addMonths(this._anchor, 1);
+        const displayStart = startOfWeek(monthStart);
+        const displayEnd = addDays(startOfWeek(addDays(monthEnd, -1)), 7);
+        return { start: displayStart, end: displayEnd, days: Math.round((displayEnd - displayStart) / 86400000), monthStart, monthEnd };
+      }
       const start = this._view === "day" ? startOfDay(this._anchor) : startOfWeek(this._anchor);
       const days = this._view === "day" ? 1 : 7;
       const end = addDays(start, days);
@@ -455,13 +509,21 @@
     }
 
     _renderHeader() {
-      const { start, end } = this._visibleRange();
-      const label = this._view === "day"
-        ? formatDayHeader(start)
-        : `${formatDayHeader(start)} – ${formatDayHeader(addDays(end, -1))}`;
+      let label;
+      if (this._view === "month") {
+        const { monthStart } = this._visibleRange();
+        label = monthStart.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+      } else if (this._view === "day") {
+        const { start } = this._visibleRange();
+        label = formatDayHeader(start);
+      } else {
+        const { start, end } = this._visibleRange();
+        label = `${formatDayHeader(start)} – ${formatDayHeader(addDays(end, -1))}`;
+      }
       this._rangeLabelEl.textContent = this._loading ? `${label} (loading…)` : label;
       this.shadowRoot.getElementById("view-day").classList.toggle("active", this._view === "day");
       this.shadowRoot.getElementById("view-week").classList.toggle("active", this._view === "week");
+      this.shadowRoot.getElementById("view-month").classList.toggle("active", this._view === "month");
     }
 
     _layoutDayEvents(events) {
@@ -486,8 +548,9 @@
       const clampedStart = event.start < day ? day : event.start;
       const clampedEnd = event.end > dayEnd ? dayEnd : event.end;
       const top = minutesSinceMidnight(clampedStart) * (HOUR_PX / 60);
+      const isPointInTime = !!(event.payload && event.payload.point_in_time);
       let height = ((clampedEnd - clampedStart) / 60000) * (HOUR_PX / 60);
-      height = Math.max(height, 18);
+      height = isPointInTime ? 14 : Math.max(height, 18);
       const widthPct = 100 / columnCount;
       const leftPct = widthPct * column;
       const key = event.uid + "|" + (event.recurrenceId || "");
@@ -496,6 +559,7 @@
       const classes = ["event-block"];
       if (isOverlap) classes.push("overlap");
       if (!isScheduler) classes.push("plain");
+      if (isPointInTime) classes.push("point-event");
       return `
         <div class="${classes.join(" ")}"
              style="top:${top}px;height:${height}px;left:${leftPct}%;width:calc(${widthPct}% - 4px)"
@@ -508,6 +572,12 @@
     }
 
     _renderGrid() {
+      if (this._view === "month") {
+        this._gridEl.classList.add("month-view");
+        this._renderMonthGrid();
+        return;
+      }
+      this._gridEl.classList.remove("month-view");
       const { start, days } = this._visibleRange();
       const overlapKeys = computeOverlaps(this._events);
       const dayList = [];
@@ -545,7 +615,82 @@
         </div>
       `;
 
+      if (this._scrollToNow) {
+        this._scrollToNow = false;
+        const scrollEl = this._gridEl.querySelector(".grid-scroll-body");
+        if (scrollEl) {
+          const now = new Date();
+          const targetPx = (now.getHours() * 60 + now.getMinutes()) * (HOUR_PX / 60);
+          scrollEl.scrollTop = Math.max(0, targetPx - 150);
+        }
+      }
+
       this._attachGridListeners(dayList);
+    }
+
+    _renderMonthGrid() {
+      const { start: displayStart, end: displayEnd, monthStart, monthEnd } = this._visibleRange();
+      const today = startOfDay(new Date());
+      const days = [];
+      let d = displayStart;
+      while (d < displayEnd) {
+        days.push(d);
+        d = addDays(d, 1);
+      }
+
+      const cellsHtml = days.map((day) => {
+        const dayEnd = addDays(day, 1);
+        const dayEvents = this._events.filter((ev) => ev.start < dayEnd && ev.end > day);
+        const isToday = day.getTime() === today.getTime();
+        const isOtherMonth = day < monthStart || day >= monthEnd;
+        const MAX_VISIBLE = 3;
+        const visibleEvents = dayEvents.slice(0, MAX_VISIBLE);
+        const overflowCount = dayEvents.length - MAX_VISIBLE;
+        const eventsHtml = visibleEvents.map((ev) => {
+          const classes = ["month-event"];
+          if (!ev.payload) classes.push("plain");
+          return `<span class="${classes.join(" ")}" data-uid="${escapeHtml(ev.uid)}" data-recurrence-id="${ev.recurrenceId || ""}">${escapeHtml(ev.summary)}</span>`;
+        }).join("");
+        return `
+          <div class="month-cell${isToday ? " today" : ""}${isOtherMonth ? " other-month" : ""}" data-day="${day.toISOString()}">
+            <div class="month-cell-day">${day.getDate()}</div>
+            ${eventsHtml}
+            ${overflowCount > 0 ? `<span class="month-more">+${overflowCount} more</span>` : ""}
+          </div>
+        `;
+      }).join("");
+
+      this._gridEl.innerHTML = `
+        <div class="month-grid-header">
+          ${DAY_LABELS.map((label) => `<div class="month-grid-dayname">${label}</div>`).join("")}
+        </div>
+        <div class="month-grid-body">${cellsHtml}</div>
+      `;
+
+      this._attachMonthListeners();
+    }
+
+    _attachMonthListeners() {
+      this._gridEl.querySelectorAll(".month-event").forEach((el) => {
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const uid = el.getAttribute("data-uid");
+          const recurrenceId = el.getAttribute("data-recurrence-id") || null;
+          const event = this._events.find((ev) => ev.uid === uid && (ev.recurrenceId || null) === recurrenceId);
+          if (event) this._openDialog({ mode: "edit", event });
+        });
+      });
+
+      this._gridEl.querySelectorAll(".month-cell").forEach((cell) => {
+        cell.addEventListener("click", (e) => {
+          if (e.target.closest(".month-event")) return;
+          const day = new Date(cell.getAttribute("data-day"));
+          const slotStart = new Date(day);
+          slotStart.setHours(12, 0, 0, 0);
+          const slotEnd = new Date(slotStart.getTime() + 3600000);
+          this._openDialog({ mode: "create", start: slotStart, end: slotEnd });
+        });
+      });
     }
 
     _attachGridListeners(dayList) {
@@ -773,6 +918,8 @@
         recurrence: "none",
         customDays: [],
         entities: isEdit && payload ? this._expandPayloadToRows(payload) : [],
+        pointInTime: !!(payload && payload.point_in_time),
+        saveRange: "",
       };
       this._buildDialogSkeleton();
     }
@@ -805,10 +952,16 @@
               </label>
               <div class="hcs-field-row">
                 ${this._renderTimeFieldHtml("start", "Start")}
-                ${this._renderTimeFieldHtml("end", "End")}
+                <div id="f-end-wrapper"${data.pointInTime ? ' hidden' : ''}>
+                  ${this._renderTimeFieldHtml("end", "End")}
+                </div>
               </div>
+              <label class="hcs-field hcs-checkbox-control" style="flex-direction:row;align-items:center;gap:6px;font-size:13px;">
+                <input type="checkbox" id="f-point-in-time"${data.pointInTime ? ' checked' : ''}>
+                <span>Point-in-time event (no end time)</span>
+              </label>
               ${isEdit
-                ? (data.recurrenceId ? `<p class="hcs-hint">Part of a recurring series — saving this edit applies to this occurrence only. Use the delete options below to remove more than one occurrence.</p>` : "")
+                ? ""
                 : `
               <label class="hcs-field">
                 <span>Repeats</span>
@@ -842,6 +995,10 @@
               <button type="button" class="hcs-btn" id="f-cancel">Cancel</button>
               ${isEdit ? `
                 ${data.recurrenceId ? `
+                  <select id="f-save-range" class="hcs-delete-range">
+                    <option value="">Save this occurrence only</option>
+                    <option value="THISANDFUTURE">Save this and following</option>
+                  </select>
                   <select id="f-delete-range" class="hcs-delete-range">
                     <option value="">Delete this event</option>
                     <option value="THISANDFUTURE">Delete this and following</option>
@@ -879,6 +1036,16 @@
       this._nameInput.addEventListener("input", () => { data.name = this._nameInput.value; });
       this._wireTimeField("start");
       this._wireTimeField("end");
+
+      const pointInTimeCheckbox = overlayEl.querySelector("#f-point-in-time");
+      if (pointInTimeCheckbox) {
+        pointInTimeCheckbox.addEventListener("change", () => {
+          data.pointInTime = pointInTimeCheckbox.checked;
+          const endWrapper = overlayEl.querySelector("#f-end-wrapper");
+          if (endWrapper) endWrapper.hidden = data.pointInTime;
+          this._renderSelectedEntities();
+        });
+      }
 
       if (this._recurrenceSelect) {
         this._recurrenceSelect.value = data.recurrence;
@@ -981,6 +1148,7 @@
     }
 
     _renderRevertCheckboxHtml(row) {
+      if (this._dialogData && this._dialogData.pointInTime) return "";
       return `
         <label class="hcs-control hcs-checkbox-control">
           <input type="checkbox" data-revert ${row.revert ? "checked" : ""}>
@@ -1047,6 +1215,8 @@
             </label>
             ${this._renderRevertCheckboxHtml(row)}
           `;
+        case "auto-trigger":
+          return `<p class="hcs-hint">Triggers the automation's actions when the event starts.</p>`;
         case "trigger":
           return `<p class="hcs-hint">Triggers the scene when the event starts.</p>`;
         default:
@@ -1129,31 +1299,35 @@
 
     _buildEntitiesPayload() {
       const entitiesPayload = [];
+      const forceNoRevert = !!(this._dialogData && this._dialogData.pointInTime);
       this._dialogData.entities.forEach((row) => {
-        if (row.kind === "media_player") {
+        const revert = forceNoRevert ? false : row.revert;
+        if (row.kind === "auto-trigger") {
+          entitiesPayload.push({ entity_id: row.entityId, service: "automation.trigger", params: {}, revert: false });
+        } else if (row.kind === "media_player") {
           if (row.actions.volume) {
-            entitiesPayload.push({ entity_id: row.entityId, service: "media_player.volume_set", params: { volume_level: row.params.volume_level }, revert: row.revert });
+            entitiesPayload.push({ entity_id: row.entityId, service: "media_player.volume_set", params: { volume_level: row.params.volume_level }, revert });
           }
           if (row.actions.source) {
-            entitiesPayload.push({ entity_id: row.entityId, service: "media_player.select_source", params: { source: row.params.source }, revert: row.revert });
+            entitiesPayload.push({ entity_id: row.entityId, service: "media_player.select_source", params: { source: row.params.source }, revert });
           }
         } else if (row.kind === "light") {
           if (row.state === "off") {
-            entitiesPayload.push({ entity_id: row.entityId, service: "light.turn_off", params: {}, revert: row.revert });
+            entitiesPayload.push({ entity_id: row.entityId, service: "light.turn_off", params: {}, revert });
           } else {
             const params = { brightness_pct: row.params.brightness_pct };
             if (row.params.color_temp_kelvin != null) params.color_temp_kelvin = row.params.color_temp_kelvin;
-            entitiesPayload.push({ entity_id: row.entityId, service: "light.turn_on", params, revert: row.revert });
+            entitiesPayload.push({ entity_id: row.entityId, service: "light.turn_on", params, revert });
           }
         } else if (row.kind === "climate") {
-          entitiesPayload.push({ entity_id: row.entityId, service: "climate.set_temperature", params: { temperature: row.params.temperature, hvac_mode: row.params.hvac_mode }, revert: row.revert });
+          entitiesPayload.push({ entity_id: row.entityId, service: "climate.set_temperature", params: { temperature: row.params.temperature, hvac_mode: row.params.hvac_mode }, revert });
         } else if (row.kind === "cover") {
-          entitiesPayload.push({ entity_id: row.entityId, service: "cover.set_cover_position", params: { position: row.params.position }, revert: row.revert });
+          entitiesPayload.push({ entity_id: row.entityId, service: "cover.set_cover_position", params: { position: row.params.position }, revert });
         } else if (row.kind === "trigger") {
           entitiesPayload.push({ entity_id: row.entityId, service: "scene.turn_on", params: {} });
         } else {
           const service = row.state === "off" ? `${row.domain}.turn_off` : `${row.domain}.turn_on`;
-          entitiesPayload.push({ entity_id: row.entityId, service, params: {}, revert: row.revert });
+          entitiesPayload.push({ entity_id: row.entityId, service, params: {}, revert });
         }
       });
       return entitiesPayload;
@@ -1165,28 +1339,35 @@
         alert("Add at least one entity.");
         return;
       }
-      if (data.end <= data.start) {
+      if (!data.pointInTime && data.end <= data.start) {
         alert("End time must be after start time.");
         return;
       }
       const payloadObj = { entities: this._buildEntitiesPayload() };
+      if (data.pointInTime) payloadObj.point_in_time = true;
       const startAnchorPayload = anchorToPayload(data.startAnchor);
-      const endAnchorPayload = anchorToPayload(data.endAnchor);
+      const endAnchorPayload = data.pointInTime ? null : anchorToPayload(data.endAnchor);
       if (startAnchorPayload) payloadObj.start_anchor = startAnchorPayload;
       if (endAnchorPayload) payloadObj.end_anchor = endAnchorPayload;
       const description = JSON.stringify(payloadObj);
+      const dtend = data.pointInTime
+        ? new Date(data.start.getTime() + 60000).toISOString()
+        : data.end.toISOString();
       const eventPayload = {
         summary: data.name || "Scheduled event",
         description,
         dtstart: data.start.toISOString(),
-        dtend: data.end.toISOString(),
+        dtend,
       };
       const rrule = data.mode === "create" ? buildRRule(data.recurrence, data.customDays) : null;
       if (rrule) eventPayload.rrule = rrule;
 
+      const saveRangeSelect = this._dialogEl.querySelector("#f-save-range");
+      const saveRange = saveRangeSelect ? saveRangeSelect.value : "";
+
       try {
         if (data.mode === "edit") {
-          await updateCalendarEvent(this._hass, this._entityId, data.uid, eventPayload, data.recurrenceId, "");
+          await updateCalendarEvent(this._hass, this._entityId, data.uid, eventPayload, data.recurrenceId, saveRange);
         } else {
           await createCalendarEvent(this._hass, this._entityId, eventPayload);
         }
@@ -1230,6 +1411,6 @@
   window.customCards.push({
     type: "hass-calendar-scheduler",
     name: "Calendar Scheduler",
-    description: "Week/day timeline calendar for scheduling Home Assistant entity actions",
+    description: "Month/week/day calendar for scheduling Home Assistant entity actions",
   });
 })();
