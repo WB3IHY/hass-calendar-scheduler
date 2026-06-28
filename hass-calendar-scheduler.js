@@ -1335,7 +1335,7 @@
         const revert = forceNoRevert ? false : row.revert;
         if (row.kind === "auto-trigger") {
           if (row.state === "trigger") {
-            entitiesPayload.push({ entity_id: row.entityId, service: "automation.trigger", params: {}, revert: false });
+            entitiesPayload.push({ entity_id: row.entityId, service: "automation.trigger", params: { skip_condition: false }, revert: false });
           } else {
             const service = row.state === "off" ? "automation.turn_off" : "automation.turn_on";
             entitiesPayload.push({ entity_id: row.entityId, service, params: {}, revert });
