@@ -279,7 +279,8 @@
     .month-event { font-size: 11px; background: var(--primary-color); color: var(--text-primary-color, #fff); border-radius: 3px; padding: 1px 4px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; display: block; }
     .month-event.plain { background: var(--secondary-background-color); color: var(--primary-text-color); }
     .month-event.overlap { background: var(--warning-color, #ff9800); }
-    .month-more { font-size: 11px; color: var(--secondary-text-color); padding: 1px 4px; display: block; }
+    .month-more { font-size: 11px; color: var(--secondary-text-color); padding: 1px 4px; display: block; cursor: pointer; }
+    .month-more:hover { text-decoration: underline; color: var(--primary-text-color); }
   `;
 
   const MODAL_CSS = `
@@ -528,31 +529,54 @@
       this.shadowRoot.getElementById("view-month").classList.toggle("active", this._view === "month");
     }
 
-    _layoutDayEvents(events) {
-      const sorted = [...events].sort((a, b) => a.start - b.start);
-      const columns = [];
-      const placements = [];
-      sorted.forEach((event) => {
-        let placedColumn = columns.findIndex((col) => col.end <= event.start);
-        if (placedColumn === -1) {
-          columns.push({ end: event.end });
-          placedColumn = columns.length - 1;
-        } else {
-          columns[placedColumn].end = event.end;
-        }
-        placements.push({ event, column: placedColumn });
-      });
-      const columnCount = Math.max(1, columns.length);
-      return placements.map((p) => ({ ...p, columnCount }));
-    }
-
-    _renderEventBlock(event, day, dayEnd, overlapKeys, column, columnCount) {
+    _eventExtent(event, day, dayEnd) {
       const clampedStart = event.start < day ? day : event.start;
       const clampedEnd = event.end > dayEnd ? dayEnd : event.end;
       const top = minutesSinceMidnight(clampedStart) * (HOUR_PX / 60);
       const isPointInTime = !!(event.payload && event.payload.point_in_time);
       let height = ((clampedEnd - clampedStart) / 60000) * (HOUR_PX / 60);
       height = isPointInTime ? 14 : Math.max(height, 18);
+      return { top, height };
+    }
+
+    // Packs events into side-by-side columns by their drawn extents, not their
+    // real times: short and point-in-time events are drawn taller than their
+    // duration, so back-to-back events can still cover each other on screen.
+    // Column count is per cluster of mutually overlapping blocks.
+    _layoutDayEvents(events, day, dayEnd) {
+      const items = events
+        .map((event) => ({ event, ...this._eventExtent(event, day, dayEnd) }))
+        .sort((a, b) => a.top - b.top);
+      const placements = [];
+      let cluster = [];
+      let columns = [];
+      let clusterBottom = -Infinity;
+      const closeCluster = () => {
+        cluster.forEach((p) => { p.columnCount = columns.length; });
+        cluster = [];
+        columns = [];
+      };
+      items.forEach((item) => {
+        if (item.top >= clusterBottom) closeCluster();
+        const bottom = item.top + item.height;
+        let column = columns.findIndex((colBottom) => colBottom <= item.top);
+        if (column === -1) {
+          columns.push(bottom);
+          column = columns.length - 1;
+        } else {
+          columns[column] = bottom;
+        }
+        clusterBottom = Math.max(clusterBottom, bottom);
+        const placement = { ...item, column };
+        cluster.push(placement);
+        placements.push(placement);
+      });
+      closeCluster();
+      return placements;
+    }
+
+    _renderEventBlock({ event, top, height, column, columnCount }, overlapKeys) {
+      const isPointInTime = !!(event.payload && event.payload.point_in_time);
       const widthPct = 100 / columnCount;
       const leftPct = widthPct * column;
       const key = event.uid + "|" + (event.recurrenceId || "");
@@ -596,9 +620,8 @@
       const dayColumnsHtml = dayList.map((day, idx) => {
         const dayEnd = addDays(day, 1);
         const dayEvents = this._events.filter((ev) => !ev.allDay && ev.start < dayEnd && ev.end > day);
-        const blocksHtml = this._layoutDayEvents(dayEvents)
-          .map(({ event, column, columnCount }) =>
-            this._renderEventBlock(event, day, dayEnd, overlapKeys, column, columnCount))
+        const blocksHtml = this._layoutDayEvents(dayEvents, day, dayEnd)
+          .map((placement) => this._renderEventBlock(placement, overlapKeys))
           .join("");
         const isToday = startOfDay(new Date()).getTime() === day.getTime();
         return `<div class="day-col${isToday ? " today" : ""}" data-day-index="${idx}" style="height:${totalHeight}px">${hourLines.join("")}${blocksHtml}</div>`;
@@ -657,7 +680,7 @@
           <div class="month-cell${isToday ? " today" : ""}${isOtherMonth ? " other-month" : ""}" data-day="${day.toISOString()}">
             <div class="month-cell-day">${day.getDate()}</div>
             ${eventsHtml}
-            ${overflowCount > 0 ? `<span class="month-more">+${overflowCount} more</span>` : ""}
+            ${overflowCount > 0 ? `<span class="month-more" title="Show this day">+${overflowCount} more</span>` : ""}
           </div>
         `;
       }).join("");
@@ -687,6 +710,11 @@
         cell.addEventListener("click", (e) => {
           if (e.target.closest(".month-event")) return;
           const day = new Date(cell.getAttribute("data-day"));
+          if (e.target.closest(".month-more")) {
+            this._focusDate = startOfDay(day);
+            this._setView("day");
+            return;
+          }
           const slotStart = new Date(day);
           slotStart.setHours(12, 0, 0, 0);
           const slotEnd = new Date(slotStart.getTime() + 3600000);

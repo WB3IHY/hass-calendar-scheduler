@@ -143,8 +143,9 @@ for the `root` user.
 
 ## Using the card
 
-- Switch between **Day** and **Week** views, navigate with the arrows or
-  jump to **Today**.
+- Switch between **Day**, **Week** and **Month** views, navigate with the
+  arrows or jump to **Today**. In Month view, a day with more events than
+  fit shows **+N more** — click it to open that day in Day view.
 - Click an empty time slot to create a new event; click an existing event
   block to edit it. When editing an occurrence of a recurring event, the
   Delete button offers a choice of scope: this event, this and all
@@ -183,10 +184,11 @@ a minute of the scheduled time, not instantaneously.
 
 - All-day calendar events are not shown or creatable from the card — it's
   designed around timed scheduling, not all-day reminders.
-- Editing a recurring event always applies **only to that occurrence**
-  (saving never changes the series' recurrence rule). Deleting offers a
-  choice — this event, this and all following, or the entire series — so
-  to change a series' settings, delete the whole series and recreate it.
+- Editing a recurring event applies to **this occurrence only** or to
+  **this and all following** occurrences (chosen in the dialog), but saving
+  never changes the series' recurrence rule itself. To change how often a
+  series repeats, delete the series (or this and all following) and
+  recreate it.
 - Requires a reasonably current Home Assistant (2024.10+) for the
   `trigger:`/`action:` automation syntax and `color_temp_kelvin` service
   field used here.
