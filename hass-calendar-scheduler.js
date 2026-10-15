@@ -188,6 +188,105 @@
     return new Date(new Date(base).getTime() + sign * anchor.minutes * 60000);
   }
 
+  // Sunrise/sunset for a given local day, using NOAA's solar position
+  // equations (as the astral library behind HA's sun.sun does), with HA's
+  // elevation adjustment. Only used for days that sun.sun's
+  // next_rising/next_setting don't cover.
+  function sunEventOn(day, sun, lat, lng, elevationM) {
+    const rad = Math.PI / 180;
+    const R = 6356900;
+    const zenith = 90.833 + Math.acos(R / (R + Math.max(0, elevationM || 0))) / rad;
+    const utcMidnight = Date.UTC(day.getFullYear(), day.getMonth(), day.getDate());
+    const eventMinutes = (approxMinutes) => {
+      const jd = (utcMidnight + approxMinutes * 60000) / 86400000 + 2440587.5;
+      const T = (jd - 2451545) / 36525;
+      const L0 = (280.46646 + T * (36000.76983 + T * 0.0003032)) % 360;
+      const M = 357.52911 + T * (35999.05029 - 0.0001537 * T);
+      const e = 0.016708634 - T * (0.000042037 + 0.0000001267 * T);
+      const C = Math.sin(M * rad) * (1.914602 - T * (0.004817 + 0.000014 * T))
+        + Math.sin(2 * M * rad) * (0.019993 - 0.000101 * T)
+        + Math.sin(3 * M * rad) * 0.000289;
+      const omega = 125.04 - 1934.136 * T;
+      const appLong = L0 + C - 0.00569 - 0.00478 * Math.sin(omega * rad);
+      const eps0 = 23 + (26 + (21.448 - T * (46.815 + T * (0.00059 - T * 0.001813))) / 60) / 60;
+      const eps = eps0 + 0.00256 * Math.cos(omega * rad);
+      const decl = Math.asin(Math.sin(eps * rad) * Math.sin(appLong * rad));
+      const y = Math.tan((eps / 2) * rad) ** 2;
+      const eqTime = 4 / rad * (y * Math.sin(2 * L0 * rad) - 2 * e * Math.sin(M * rad)
+        + 4 * e * y * Math.sin(M * rad) * Math.cos(2 * L0 * rad)
+        - 0.5 * y * y * Math.sin(4 * L0 * rad) - 1.25 * e * e * Math.sin(2 * M * rad));
+      const cosH = Math.cos(zenith * rad) / (Math.cos(lat * rad) * Math.cos(decl)) - Math.tan(lat * rad) * Math.tan(decl);
+      if (cosH < -1 || cosH > 1) return null;
+      const H = Math.acos(cosH) / rad;
+      const noon = 720 - 4 * lng - eqTime;
+      return sun === "sunset" ? noon + 4 * H : noon - 4 * H;
+    };
+    // Evaluate at local noon, then refine once at the event time itself.
+    const first = eventMinutes(720 - 4 * lng);
+    const minutes = first == null ? null : eventMinutes(first);
+    return minutes == null ? null : new Date(utcMidnight + minutes * 60000);
+  }
+
+  // When the automation will actually fire an anchored edge on the given day:
+  // sun.sun's live value when it falls on that day (exactly what the
+  // automation uses), otherwise the computed sunrise/sunset.
+  function anchoredTimeOn(hass, day, anchor) {
+    const attr = anchor.sun === "sunset" ? "next_setting" : "next_rising";
+    const sunState = hass.states["sun.sun"];
+    const live = sunState && sunState.attributes && sunState.attributes[attr];
+    let base = live ? new Date(live) : null;
+    if (!base || startOfDay(base).getTime() !== startOfDay(day).getTime()) {
+      const cfg = hass.config || {};
+      if (cfg.latitude == null || cfg.longitude == null) return null;
+      base = sunEventOn(day, anchor.sun, cfg.latitude, cfg.longitude, cfg.elevation);
+    }
+    return base ? new Date(base.getTime() + anchor.offset_minutes * 60000) : null;
+  }
+
+  function effectiveTimes(hass, event) {
+    const payload = event.payload || {};
+    let start = event.start;
+    let end = event.end;
+    if (payload.start_anchor) start = anchoredTimeOn(hass, startOfDay(event.start), payload.start_anchor) || start;
+    if (payload.end_anchor) end = anchoredTimeOn(hass, startOfDay(event.end), payload.end_anchor) || end;
+    if (payload.point_in_time) end = new Date(start.getTime() + 1);
+    return { start, end };
+  }
+
+  function formatTime(date) {
+    return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+
+  function formatAnchor(anchor) {
+    const label = anchor.sun === "sunset" ? "Sunset" : "Sunrise";
+    if (!anchor.offset_minutes) return `at ${label.toLowerCase()}`;
+    const mins = Math.abs(anchor.offset_minutes);
+    return `${mins} min ${anchor.offset_minutes < 0 ? "before" : "after"} ${label.toLowerCase()}`;
+  }
+
+  function formatRRule(rrule) {
+    if (!rrule) return "";
+    const parts = Object.fromEntries(rrule.split(";").map((p) => p.split("=")));
+    const freq = { DAILY: "Daily", WEEKLY: "Weekly", MONTHLY: "Monthly", YEARLY: "Yearly" }[parts.FREQ] || "Repeats";
+    if (parts.BYDAY) {
+      const days = parts.BYDAY.split(",").map((c) => DAY_LABELS[DAY_CODES.indexOf(c)] || c);
+      return `${freq} on ${days.join(", ")}`;
+    }
+    return freq;
+  }
+
+  function describeAction(hass, item, pointInTime) {
+    const verb = (item.service || "").split(".")[1] || item.service || "";
+    const params = Object.entries(item.params || {})
+      .filter(([k]) => k !== "skip_condition")
+      .map(([k, v]) => `${k.replace(/_/g, " ")} ${v}`);
+    if (item.params && item.params.skip_condition) params.push("skips conditions");
+    const reverts = !pointInTime && item.revert !== false && domainOf(item.entity_id) !== "scene";
+    return `${verb.replace(/_/g, " ")} ${friendlyName(hass, item.entity_id)}`
+      + (params.length ? ` (${params.join(", ")})` : "")
+      + (reverts ? ", reverts at end" : "");
+  }
+
   async function fetchEntitiesForDisplay(hass) {
     const result = await hass.callWS({ type: "config/entity_registry/list_for_display" });
     return result.entities.map((e) => ({
@@ -279,6 +378,29 @@
     .month-event { font-size: 11px; background: var(--primary-color); color: var(--text-primary-color, #fff); border-radius: 3px; padding: 1px 4px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; display: block; }
     .month-event.plain { background: var(--secondary-background-color); color: var(--primary-text-color); }
     .month-event.overlap { background: var(--warning-color, #ff9800); }
+    .grid.list-mode { height: 600px; }
+    .list-toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--divider-color); }
+    .list-filter { flex: 1; min-width: 0; padding: 6px 8px; font-size: 14px; border: 1px solid var(--divider-color); border-radius: 4px; background: var(--card-background-color, #fff); color: var(--primary-text-color); }
+    .list-count { font-size: 12px; color: var(--secondary-text-color); white-space: nowrap; }
+    .list-body { flex: 1; overflow-y: auto; position: relative; }
+    .list-day { position: sticky; top: 0; z-index: 1; padding: 6px 16px; font-size: 13px; font-weight: 500; background: var(--secondary-background-color); border-bottom: 1px solid var(--divider-color); }
+    .list-day.today { color: var(--primary-color); }
+    .list-now { margin: 0 16px; padding: 2px 0; font-size: 11px; color: var(--error-color, #db4437); border-top: 2px solid var(--error-color, #db4437); }
+    .list-row { display: grid; grid-template-columns: 9.5em 1fr; gap: 2px 12px; padding: 8px 16px; border-bottom: 1px solid var(--divider-color); cursor: pointer; }
+    .list-row:hover { background: var(--secondary-background-color); }
+    .list-row.past { opacity: 0.55; }
+    .list-time { font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .list-main { min-width: 0; }
+    .list-title { font-weight: 500; font-size: 14px; }
+    .list-notes { font-size: 12px; color: var(--secondary-text-color); }
+    .list-actions { margin: 2px 0 0; padding-left: 18px; font-size: 12px; color: var(--secondary-text-color); }
+    .list-plain { list-style: none; margin-left: -18px; font-style: italic; }
+    .list-conflict { margin-top: 3px; font-size: 12px; color: var(--warning-color, #ff9800); }
+    .list-conflict.shared { color: var(--error-color, #db4437); font-weight: 500; }
+    .list-empty { padding: 24px 16px; text-align: center; color: var(--secondary-text-color); }
+    @media (max-width: 500px) {
+      .list-row { grid-template-columns: 1fr; }
+    }
     .month-more { font-size: 11px; color: var(--secondary-text-color); padding: 1px 4px; display: block; cursor: pointer; }
     .month-more:hover { text-decoration: underline; color: var(--primary-text-color); }
   `;
@@ -353,6 +475,8 @@
       this._dialogData = null;
       this._scrollToNow = true;
       this._focusDate = startOfDay(new Date());
+      this._listMode = false;
+      this._listFilter = "";
       this.attachShadow({ mode: "open" });
     }
 
@@ -412,6 +536,7 @@
               <button class="view-btn" id="view-day" data-view="day">Day</button>
               <button class="view-btn" id="view-week" data-view="week">Week</button>
               <button class="view-btn" id="view-month" data-view="month">Month</button>
+              <button class="view-btn" id="view-list" title="Show the current day, week or month as a list">List</button>
             </div>
           </div>
           <div class="grid" id="grid"></div>
@@ -425,6 +550,14 @@
       this.shadowRoot.getElementById("view-day").addEventListener("click", () => this._setView("day"));
       this.shadowRoot.getElementById("view-week").addEventListener("click", () => this._setView("week"));
       this.shadowRoot.getElementById("view-month").addEventListener("click", () => this._setView("month"));
+      this.shadowRoot.getElementById("view-list").addEventListener("click", () => this._toggleList());
+    }
+
+    _toggleList() {
+      this._listMode = !this._listMode;
+      this._scrollToNow = true;
+      this._renderHeader();
+      this._renderGrid();
     }
 
     _navigate(delta) {
@@ -506,6 +639,7 @@
         start,
         end,
         allDay: !raw.start.dateTime,
+        rrule: raw.rrule || null,
         payload,
         entityIds,
       };
@@ -523,10 +657,12 @@
         const { start, end } = this._visibleRange();
         label = `${formatDayHeader(start)} – ${formatDayHeader(addDays(end, -1))}`;
       }
+      if (this._listMode) label = `List · ${label}`;
       this._rangeLabelEl.textContent = this._loading ? `${label} (loading…)` : label;
       this.shadowRoot.getElementById("view-day").classList.toggle("active", this._view === "day");
       this.shadowRoot.getElementById("view-week").classList.toggle("active", this._view === "week");
       this.shadowRoot.getElementById("view-month").classList.toggle("active", this._view === "month");
+      this.shadowRoot.getElementById("view-list").classList.toggle("active", this._listMode);
     }
 
     _eventExtent(event, day, dayEnd) {
@@ -598,6 +734,12 @@
     }
 
     _renderGrid() {
+      this._gridEl.classList.toggle("list-mode", this._listMode);
+      if (this._listMode) {
+        this._gridEl.classList.remove("month-view");
+        this._renderList();
+        return;
+      }
       if (this._view === "month") {
         this._gridEl.classList.add("month-view");
         this._renderMonthGrid();
@@ -651,6 +793,147 @@
       }
 
       this._attachGridListeners(dayList);
+    }
+
+    _renderList() {
+      this._gridEl.innerHTML = `
+        <div class="list-toolbar">
+          <input type="search" id="list-filter" class="list-filter" placeholder="Filter by name, device or action" value="${escapeHtml(this._listFilter)}">
+          <span class="list-count" id="list-count"></span>
+        </div>
+        <div class="list-body" id="list-body"></div>
+      `;
+      const filterEl = this._gridEl.querySelector("#list-filter");
+      filterEl.addEventListener("input", () => {
+        this._listFilter = filterEl.value;
+        this._renderListBody();
+      });
+      this._renderListBody();
+    }
+
+    // One row per occurrence in the current day/week/month, by actual fire
+    // time (sun-anchored edges resolved), with near-collisions marked.
+    _listRows() {
+      const range = this._visibleRange();
+      const rangeStart = range.monthStart || range.start;
+      const rangeEnd = range.monthEnd || range.end;
+      const rows = this._events
+        .filter((ev) => !ev.allDay)
+        .map((ev) => ({ event: ev, ...effectiveTimes(this._hass, ev), conflicts: [] }))
+        .filter((row) => row.start >= rangeStart && row.start < rangeEnd)
+        .sort((a, b) => a.start - b.start);
+      const NEAR_MS = 2 * 60000;
+      for (let i = 0; i < rows.length; i++) {
+        for (let j = i + 1; j < rows.length; j++) {
+          const a = rows[i];
+          const b = rows[j];
+          const gap = Math.abs(b.start - a.start);
+          const overlaps = a.start < b.end && b.start < a.end;
+          if (!overlaps && gap > NEAR_MS) continue;
+          const shared = a.event.entityIds.filter((id) => b.event.entityIds.includes(id));
+          const kind = overlaps && gap > NEAR_MS ? "overlaps" : "near";
+          a.conflicts.push({ other: b, kind, gap, shared });
+          b.conflicts.push({ other: a, kind, gap, shared });
+        }
+      }
+      return rows;
+    }
+
+    _rowMatches(row, needle) {
+      if (!needle) return true;
+      const ev = row.event;
+      const haystack = [ev.summary];
+      (ev.payload ? ev.payload.entities : []).forEach((item) => {
+        haystack.push(item.entity_id, item.service, friendlyName(this._hass, item.entity_id));
+      });
+      return haystack.some((text) => text && text.toLowerCase().includes(needle));
+    }
+
+    _renderListRow(row, now) {
+      const ev = row.event;
+      const payload = ev.payload;
+      const isPoint = !!(payload && payload.point_in_time);
+      let timeHtml = escapeHtml(formatTime(row.start));
+      if (!isPoint) timeHtml += ` – ${escapeHtml(formatTime(row.end))}`;
+      const notes = [];
+      if (payload && payload.start_anchor) notes.push(`Starts ${formatAnchor(payload.start_anchor)}`);
+      if (payload && payload.end_anchor && !isPoint) notes.push(`Ends ${formatAnchor(payload.end_anchor)}`);
+      const drift = payload && (payload.start_anchor || payload.end_anchor)
+        && Math.abs(row.start - ev.start) >= 60000;
+      if (drift) notes.push(`grid shows ${formatTime(ev.start)}`);
+      if (ev.rrule) notes.push(formatRRule(ev.rrule));
+      const actions = payload
+        ? payload.entities.map((item) => `<li>${escapeHtml(describeAction(this._hass, item, isPoint))}</li>`).join("")
+        : `<li class="list-plain">Not a scheduler event (no actions)</li>`;
+      const conflictHtml = row.conflicts.map((c) => {
+        const what = c.kind === "overlaps"
+          ? "Overlaps"
+          : c.gap < 60000 ? "Same minute as" : `${Math.round(c.gap / 60000)} min from`;
+        const shared = c.shared.length
+          ? ` · both control ${c.shared.map((id) => escapeHtml(friendlyName(this._hass, id))).join(", ")}`
+          : "";
+        return `<div class="list-conflict${c.shared.length ? " shared" : ""}">⚠ ${what} ${escapeHtml(c.other.event.summary)} (${escapeHtml(formatTime(c.other.start))})${shared}</div>`;
+      }).join("");
+      const classes = ["list-row"];
+      if (row.end <= now) classes.push("past");
+      if (!payload) classes.push("plain");
+      return `
+        <div class="${classes.join(" ")}" data-uid="${escapeHtml(ev.uid)}" data-recurrence-id="${ev.recurrenceId || ""}">
+          <div class="list-time">${timeHtml}</div>
+          <div class="list-main">
+            <div class="list-title">${escapeHtml(ev.summary)}</div>
+            ${notes.length ? `<div class="list-notes">${escapeHtml(notes.join(" · "))}</div>` : ""}
+            <ul class="list-actions">${actions}</ul>
+            ${conflictHtml}
+          </div>
+        </div>
+      `;
+    }
+
+    _renderListBody() {
+      const bodyEl = this._gridEl.querySelector("#list-body");
+      const countEl = this._gridEl.querySelector("#list-count");
+      if (!bodyEl) return;
+      const needle = this._listFilter.trim().toLowerCase();
+      const allRows = this._listRows();
+      const rows = allRows.filter((row) => this._rowMatches(row, needle));
+      const now = new Date();
+      const today = startOfDay(now).getTime();
+      countEl.textContent = needle ? `${rows.length} of ${allRows.length}` : `${rows.length} event${rows.length === 1 ? "" : "s"}`;
+
+      const parts = [];
+      let currentDay = null;
+      let nowMarked = false;
+      rows.forEach((row) => {
+        const day = startOfDay(row.start).getTime();
+        if (day !== currentDay) {
+          currentDay = day;
+          parts.push(`<div class="list-day${day === today ? " today" : ""}">${escapeHtml(formatDayHeader(row.start))}${day === today ? " · Today" : ""}</div>`);
+        }
+        if (!nowMarked && day === today && row.start > now) {
+          nowMarked = true;
+          parts.push(`<div class="list-now" id="list-now">Now · ${escapeHtml(formatTime(now))}</div>`);
+        }
+        parts.push(this._renderListRow(row, now));
+      });
+      bodyEl.innerHTML = parts.length
+        ? parts.join("")
+        : `<div class="list-empty">${needle ? "No events match this filter." : "No events in this range."}</div>`;
+
+      bodyEl.querySelectorAll(".list-row").forEach((rowEl) => {
+        rowEl.addEventListener("click", () => {
+          const uid = rowEl.getAttribute("data-uid");
+          const recurrenceId = rowEl.getAttribute("data-recurrence-id") || null;
+          const event = this._events.find((ev) => ev.uid === uid && (ev.recurrenceId || null) === recurrenceId);
+          if (event) this._openDialog({ mode: "edit", event });
+        });
+      });
+
+      if (this._scrollToNow && !this._loading && rows.length) {
+        this._scrollToNow = false;
+        const marker = bodyEl.querySelector("#list-now") || bodyEl.querySelector(".list-day.today");
+        if (marker) bodyEl.scrollTop = Math.max(0, marker.offsetTop - bodyEl.offsetTop - 40);
+      }
     }
 
     _renderMonthGrid() {

@@ -146,6 +146,15 @@ for the `root` user.
 - Switch between **Day**, **Week** and **Month** views, navigate with the
   arrows or jump to **Today**. In Month view, a day with more events than
   fit shows **+N more** — click it to open that day in Day view.
+- Toggle **List** to see the current day, week or month as a list, one row
+  per occurrence, in the order they actually fire. While List is on, the
+  Day/Week/Month buttons pick how much it covers; click List again to go
+  back to the grid. Each row shows the time, name, repeat rule and what the
+  event does. Sunset/Sunrise-anchored events show their **actual** fire time
+  for that day (plus the grid's stored time when it differs). Events that
+  overlap or start within 2 minutes of each other are marked ⚠ (in red when
+  both control the same device). Use the filter box to search by name,
+  device or action, and click a row to edit it.
 - Click an empty time slot to create a new event; click an existing event
   block to edit it. When editing an occurrence of a recurring event, the
   Delete button offers a choice of scope: this event, this and all
