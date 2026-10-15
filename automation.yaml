@@ -16,9 +16,11 @@ blueprint:
     An event's start and/or end may instead be anchored to sunrise/sunset
     via a "start_anchor"/"end_anchor" field
     ({"sun":"sunset","offset_minutes":-60}); when present, that field's
-    actual fire time is recomputed every run from sun.sun's live
-    next_setting/next_rising rather than trusting the event's stored
-    literal time, so it never drifts.
+    actual fire time is recomputed every run from that occurrence's own
+    day's sunrise/sunset (sun.sun's live next_setting/next_rising, shifted
+    to the event's day when it has already rolled over to tomorrow) rather
+    than trusting the event's stored literal time, so it never drifts and
+    offsets after sunset/sunrise work too.
   domain: automation
   input:
     calendar_entity:
@@ -65,20 +67,49 @@ actions:
                 - variables:
                     payload: "{{ repeat.item.description | from_json }}"
                 - variables:
-                    start_target: >-
-                      {% if payload.start_anchor is defined %}
-                        {% set sun_attr = 'next_setting' if payload.start_anchor.sun == 'sunset' else 'next_rising' %}
-                        {{ (as_datetime(state_attr('sun.sun', sun_attr)) + timedelta(minutes=payload.start_anchor.offset_minutes)).isoformat() }}
-                      {% else %}
-                        {{ repeat.item.start }}
-                      {% endif %}
-                    end_target: >-
-                      {% if payload.end_anchor is defined %}
-                        {% set sun_attr = 'next_setting' if payload.end_anchor.sun == 'sunset' else 'next_rising' %}
-                        {{ (as_datetime(state_attr('sun.sun', sun_attr)) + timedelta(minutes=payload.end_anchor.offset_minutes)).isoformat() }}
-                      {% else %}
-                        {{ repeat.item.end }}
-                      {% endif %}
+                    # A sun-anchored edge fires at that event's own day's sunrise/sunset
+                    # plus offset. sun.sun only gives the NEXT one, which rolls over to
+                    # tomorrow the moment today's passes (so an "after sunset" offset
+                    # would never be reached), so next_setting/next_rising is shifted by
+                    # how much sunrise/sunset moves between its day and the event's day
+                    # (NOAA solar equations). Same day -> no shift, exactly sun.sun.
+                    anchored_targets: >-
+                      {%- macro sun_minutes(day, kind) -%}
+                        {%- set lat = state_attr('zone.home', 'latitude') | float -%}
+                        {%- set lng = state_attr('zone.home', 'longitude') | float -%}
+                        {%- set rad = pi / 180 -%}
+                        {%- set base = as_timestamp(day.isoformat() ~ 'T00:00:00+00:00') -%}
+                        {%- set ns = namespace(m = 720 - 4 * lng) -%}
+                        {%- for _ in range(2) -%}
+                          {%- set T = ((base + ns.m * 60) / 86400 + 2440587.5 - 2451545) / 36525 -%}
+                          {%- set L0 = (280.46646 + T * (36000.76983 + T * 0.0003032)) % 360 -%}
+                          {%- set M = 357.52911 + T * (35999.05029 - 0.0001537 * T) -%}
+                          {%- set e = 0.016708634 - T * (0.000042037 + 0.0000001267 * T) -%}
+                          {%- set C = sin(M * rad) * (1.914602 - T * (0.004817 + 0.000014 * T)) + sin(2 * M * rad) * (0.019993 - 0.000101 * T) + sin(3 * M * rad) * 0.000289 -%}
+                          {%- set omega = 125.04 - 1934.136 * T -%}
+                          {%- set app_long = L0 + C - 0.00569 - 0.00478 * sin(omega * rad) -%}
+                          {%- set eps = 23 + (26 + (21.448 - T * (46.815 + T * (0.00059 - T * 0.001813))) / 60) / 60 + 0.00256 * cos(omega * rad) -%}
+                          {%- set decl = asin(sin(eps * rad) * sin(app_long * rad)) -%}
+                          {%- set y = tan(eps / 2 * rad) ** 2 -%}
+                          {%- set eq_time = 4 / rad * (y * sin(2 * L0 * rad) - 2 * e * sin(M * rad) + 4 * e * y * sin(M * rad) * cos(2 * L0 * rad) - 0.5 * y * y * sin(4 * L0 * rad) - 1.25 * e * e * sin(2 * M * rad)) -%}
+                          {%- set cos_h = cos(90.833 * rad) / (cos(lat * rad) * cos(decl)) - tan(lat * rad) * tan(decl) -%}
+                          {%- set H = acos([[cos_h, 1] | min, -1] | max) / rad -%}
+                          {%- set noon = 720 - 4 * lng - eq_time -%}
+                          {%- set ns.m = noon + 4 * H if kind == 'sunset' else noon - 4 * H -%}
+                        {%- endfor -%}
+                        {{- ns.m -}}
+                      {%- endmacro -%}
+                      {%- macro anchored(anchor, stored) -%}
+                        {%- set live = as_datetime(state_attr('sun.sun', 'next_setting' if anchor.sun == 'sunset' else 'next_rising')) -%}
+                        {%- set event_day = as_local(as_datetime(stored)).date() -%}
+                        {%- set live_day = as_local(live).date() -%}
+                        {%- set shift = sun_minutes(event_day, anchor.sun) | float - sun_minutes(live_day, anchor.sun) | float + (event_day - live_day).days * 1440 -%}
+                        {{- (live + timedelta(minutes = shift + anchor.offset_minutes)).isoformat() -}}
+                      {%- endmacro -%}
+                      {{ {'start': anchored(payload.start_anchor, repeat.item.start) if payload.start_anchor is defined else repeat.item.start,
+                          'end': anchored(payload.end_anchor, repeat.item.end) if payload.end_anchor is defined else repeat.item.end} }}
+                    start_target: "{{ anchored_targets.start }}"
+                    end_target: "{{ anchored_targets.end }}"
                     is_start: >-
                       {{ as_datetime(start_target) >= as_datetime(window_start) and
                          as_datetime(start_target) < as_datetime(window_end) }}
