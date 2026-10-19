@@ -190,6 +190,13 @@ only rescans its schedule every 15 minutes and can silently miss events
 created shortly before they start). This means actions fire within about
 a minute of the scheduled time, not instantaneously.
 
+Events due in the same minute run one after another in a single check, so
+if one device call fails, the others still run (the failure is recorded in
+the automation's trace). A slow check delays the next one rather than
+skipping it. Events ending exactly at midnight still get their end action.
+A scheduled Home Assistant restart interrupts that minute's check and the
+minute or two after it, so keep other events clear of a restart time.
+
 ## Known limitations (current version)
 
 - All-day calendar events are not shown or creatable from the card — it's

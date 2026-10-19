@@ -31,7 +31,10 @@ blueprint:
         entity:
           domain: calendar
 
-mode: single
+# queued, not single: if a run is ever slow, the next minute waits instead
+# of being skipped (a skipped run would silently miss that minute's events).
+mode: queued
+max: 10
 triggers:
   - trigger: time_pattern
     minutes: "*"
@@ -41,6 +44,9 @@ actions:
       window_start: "{{ (trigger.now - timedelta(minutes=1)).isoformat() }}"
       window_end: "{{ trigger.now.isoformat() }}"
       day_start: "{{ trigger.now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat() }}"
+      # Fetch from just before midnight so an event ending exactly at 00:00
+      # (which doesn't overlap the new day) still gets its end action.
+      fetch_start: "{{ (as_datetime(day_start) - timedelta(minutes=2)).isoformat() }}"
       day_end: "{{ (trigger.now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)).isoformat() }}"
       off_overrides:
         cover: cover.close_cover
@@ -50,7 +56,7 @@ actions:
     target:
       entity_id: !input calendar_entity
     data:
-      start_date_time: "{{ day_start }}"
+      start_date_time: "{{ fetch_start }}"
       end_date_time: "{{ day_end }}"
     response_variable: cal_events
   - repeat:
@@ -127,14 +133,18 @@ actions:
                           - conditions:
                               - "{{ is_start }}"
                             sequence:
+                              # continue_on_error: one failing device must not cancel
+                              # the rest of this minute's events.
                               - action: "{{ repeat.item.service }}"
+                                continue_on_error: true
                                 target:
                                   entity_id: "{{ repeat.item.entity_id }}"
                                 data: "{{ repeat.item.params | default({}) }}"
                           - conditions:
                               - "{{ is_end and should_revert and domain not in no_off_domains }}"
                             sequence:
-                              - action: >-
+                              - continue_on_error: true
+                                action: >-
                                   {{ off_overrides[domain] if domain in off_overrides
                                      else (domain ~ '.turn_off') if repeat.item.service.endswith('.turn_on')
                                      else (domain ~ '.turn_on') if repeat.item.service.endswith('.turn_off')
