@@ -152,8 +152,9 @@ for the `root` user.
   back to the grid. Each row shows the time, name, repeat rule and what the
   event does. Sunset/Sunrise-anchored events show their **actual** fire time
   for that day (plus the grid's stored time when it differs). Events that
-  overlap or start within 2 minutes of each other are marked ⚠ (in red when
-  both control the same device). Use the filter box to search by name,
+  start within 2 minutes of each other are marked ⚠ (in red when both
+  control the same device), as are longer overlaps between events that
+  control the same device. Use the filter box to search by name,
   device or action, and click a row to edit it.
 - Click an empty time slot to create a new event; click an existing event
   block to edit it. When editing an occurrence of a recurring event, the

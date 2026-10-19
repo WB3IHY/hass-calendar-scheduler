@@ -829,9 +829,12 @@
           const b = rows[j];
           const gap = Math.abs(b.start - a.start);
           const overlaps = a.start < b.end && b.start < a.end;
-          if (!overlaps && gap > NEAR_MS) continue;
           const shared = a.event.entityIds.filter((id) => b.event.entityIds.includes(id));
-          const kind = overlaps && gap > NEAR_MS ? "overlaps" : "near";
+          // Starts within 2 minutes are always marked; a longer overlap only
+          // when both events control the same entity, so mode blocks (TV
+          // night, etc.) don't flag every event that falls inside them.
+          if (gap > NEAR_MS && !(overlaps && shared.length)) continue;
+          const kind = gap > NEAR_MS ? "overlaps" : "near";
           a.conflicts.push({ other: b, kind, gap, shared });
           b.conflicts.push({ other: a, kind, gap, shared });
         }
