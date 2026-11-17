@@ -363,6 +363,7 @@
     .day-col.today { background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.05); }
     .hour-line { position: absolute; left: 0; right: 0; border-top: 1px solid var(--divider-color); opacity: 0.5; }
     .event-block { position: absolute; background: var(--primary-color); color: var(--text-primary-color, #fff); border-radius: 4px; padding: 2px 4px; font-size: 12px; overflow: hidden; box-sizing: border-box; cursor: pointer; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); }
+    .event-block .sun-glyph { margin-right: 3px; font-size: 11px; }
     .event-block.plain { background: var(--secondary-background-color); color: var(--primary-text-color); opacity: 0.7; }
     .event-block.overlap { background: var(--warning-color, #ff9800); border: 2px solid var(--error-color, #db4437); }
     .event-block.point-event { border-radius: 2px; padding: 1px 4px; border-left: 3px solid rgba(0,0,0,0.25); }
@@ -718,6 +719,15 @@
       const key = event.uid + "|" + (event.recurrenceId || "");
       const isOverlap = overlapKeys.has(key);
       const isScheduler = !!event.payload;
+      const payload = event.payload || {};
+      const sunAnchored = !!(payload.start_anchor || payload.end_anchor);
+      const tipLines = [event.summary];
+      if (sunAnchored) {
+        const startText = payload.start_anchor ? formatAnchor(payload.start_anchor) : null;
+        const endText = payload.end_anchor && !isPointInTime ? formatAnchor(payload.end_anchor) : null;
+        if (startText) tipLines.push(`Starts ${startText} (${formatTime(event.start)})`);
+        if (endText) tipLines.push(`Ends ${endText} (${formatTime(event.end)})`);
+      }
       const classes = ["event-block"];
       if (isOverlap) classes.push("overlap");
       if (!isScheduler) classes.push("plain");
@@ -727,8 +737,8 @@
              style="top:${top}px;height:${height}px;left:${leftPct}%;width:calc(${widthPct}% - 4px)"
              data-uid="${event.uid}"
              data-recurrence-id="${event.recurrenceId || ""}"
-             title="${escapeHtml(event.summary)}">
-          <span class="event-title">${escapeHtml(event.summary)}</span>
+             title="${escapeHtml(tipLines.join("\n"))}">
+          ${sunAnchored ? '<span class="sun-glyph" aria-hidden="true">\u2600</span>' : ""}<span class="event-title">${escapeHtml(event.summary)}</span>
         </div>
       `;
     }
@@ -747,7 +757,16 @@
       }
       this._gridEl.classList.remove("month-view");
       const { start, days } = this._visibleRange();
-      const overlapKeys = computeOverlaps(this._events);
+      // Day/Week blocks are drawn at the actual fire time, so sun-anchored
+      // events follow sunrise/sunset instead of the stored position. Clicks
+      // still look the original event up by uid, so editing is unchanged.
+      const shownEvents = this._events.map((ev) => {
+        if (ev.allDay || !ev.payload || !(ev.payload.start_anchor || ev.payload.end_anchor)) return ev;
+        const times = effectiveTimes(this._hass, ev);
+        const end = times.end > times.start ? times.end : new Date(times.start.getTime() + 60000);
+        return { ...ev, start: times.start, end };
+      });
+      const overlapKeys = computeOverlaps(shownEvents);
       const dayList = [];
       for (let i = 0; i < days; i++) dayList.push(addDays(start, i));
       const totalHeight = 24 * HOUR_PX;
@@ -761,7 +780,7 @@
 
       const dayColumnsHtml = dayList.map((day, idx) => {
         const dayEnd = addDays(day, 1);
-        const dayEvents = this._events.filter((ev) => !ev.allDay && ev.start < dayEnd && ev.end > day);
+        const dayEvents = shownEvents.filter((ev) => !ev.allDay && ev.start < dayEnd && ev.end > day);
         const blocksHtml = this._layoutDayEvents(dayEvents, day, dayEnd)
           .map((placement) => this._renderEventBlock(placement, overlapKeys))
           .join("");
@@ -1142,7 +1161,7 @@
             <button type="button" class="hcs-toggle-btn ${anchor.type === "sunset" ? "active" : ""}" data-anchor-type="sunset">Sunset</button>
             <button type="button" class="hcs-toggle-btn ${anchor.type === "sunrise" ? "active" : ""}" data-anchor-type="sunrise">Sunrise</button>
           </div>
-          <input type="datetime-local" class="f-time-input" value="${toLocalInputValue(date)}" ${anchor.type !== "clock" ? "disabled" : ""}>
+          <input type="datetime-local" class="f-time-input" value="${toLocalInputValue(date)}" ${anchor.type !== "clock" ? "disabled hidden" : ""}>
           <div class="hcs-anchor-offset" ${anchor.type === "clock" ? "hidden" : ""}>
             <div class="hcs-toggle-group hcs-anchor-direction-toggle">
               <button type="button" class="hcs-toggle-btn ${anchor.direction === "before" ? "active" : ""}" data-anchor-direction="before">Before</button>

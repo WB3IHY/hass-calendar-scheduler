@@ -181,6 +181,13 @@ for the `root` user.
     than "turn it off for the duration of the event."
 - Events whose entities overlap with another event's entities in the same
   time range are highlighted in a warning color.
+- In Day and Week view, Sunset/Sunrise-anchored events are drawn at their
+  **actual** fire time for each day (so they shift through the seasons) and
+  carry a ☀ glyph; hover for the anchor and the computed time. Today's time
+  comes from `sun.sun`; other days are calculated and can differ by about a
+  minute. Month view still shows the stored position. In the edit dialog the
+  time picker is hidden for a Sunset/Sunrise side, since the stored time is
+  meaningless there.
 
 ## Timing precision
 
@@ -209,13 +216,6 @@ minute or two after it, so keep other events clear of a restart time.
 - Requires a reasonably current Home Assistant (2024.10+) for the
   `trigger:`/`action:` automation syntax and `color_temp_kelvin` service
   field used here.
-- For Sunset/Sunrise-anchored events, the block's position on the grid is
-  computed once, when you create or save the event, and doesn't visually
-  drift as sunset/sunrise shifts through the seasons (the automation can't
-  rewrite an existing calendar event — only the card's own dialog can). The
-  actual firing time is unaffected by this and is always correct: it's
-  recomputed from live sun data every time the automation runs, never from
-  the event's stored position.
 
 ## License
 
