@@ -364,6 +364,7 @@
     .hour-line { position: absolute; left: 0; right: 0; border-top: 1px solid var(--divider-color); opacity: 0.5; }
     .event-block { position: absolute; background: var(--primary-color); color: var(--text-primary-color, #fff); border-radius: 4px; padding: 2px 4px; font-size: 12px; overflow: hidden; box-sizing: border-box; cursor: pointer; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); }
     .event-block .sun-glyph { margin-right: 3px; font-size: 11px; }
+    .event-block.point-event .event-title { line-height: 12px; }
     .event-block.plain { background: var(--secondary-background-color); color: var(--primary-text-color); opacity: 0.7; }
     .event-block.overlap { background: var(--warning-color, #ff9800); border: 2px solid var(--error-color, #db4437); }
     .event-block.point-event { border-radius: 2px; padding: 1px 4px; border-left: 3px solid rgba(0,0,0,0.25); }
@@ -738,7 +739,7 @@
              data-uid="${event.uid}"
              data-recurrence-id="${event.recurrenceId || ""}"
              title="${escapeHtml(tipLines.join("\n"))}">
-          ${sunAnchored ? '<span class="sun-glyph" aria-hidden="true">\u2600</span>' : ""}<span class="event-title">${escapeHtml(event.summary)}</span>
+          <span class="event-title">${sunAnchored ? '<span class="sun-glyph" aria-hidden="true">\u2600</span>' : ""}${escapeHtml(event.summary)}</span>
         </div>
       `;
     }
@@ -880,9 +881,6 @@
       const notes = [];
       if (payload && payload.start_anchor) notes.push(`Starts ${formatAnchor(payload.start_anchor)}`);
       if (payload && payload.end_anchor && !isPoint) notes.push(`Ends ${formatAnchor(payload.end_anchor)}`);
-      const drift = payload && (payload.start_anchor || payload.end_anchor)
-        && Math.abs(row.start - ev.start) >= 60000;
-      if (drift) notes.push(`grid shows ${formatTime(ev.start)}`);
       if (ev.rrule) notes.push(formatRRule(ev.rrule));
       const actions = payload
         ? payload.entities.map((item) => `<li>${escapeHtml(describeAction(this._hass, item, isPoint))}</li>`).join("")

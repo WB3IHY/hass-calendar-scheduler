@@ -151,7 +151,7 @@ for the `root` user.
   Day/Week/Month buttons pick how much it covers; click List again to go
   back to the grid. Each row shows the time, name, repeat rule and what the
   event does. Sunset/Sunrise-anchored events show their **actual** fire time
-  for that day (plus the grid's stored time when it differs). Events that
+  for that day. Events that
   start within 2 minutes of each other are marked ⚠ (in red when both
   control the same device), as are longer overlaps between events that
   control the same device. Use the filter box to search by name,
